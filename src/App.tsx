@@ -1,750 +1,1305 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  LayoutDashboard,
-  PieChart as ChartIcon,
-  Calendar as CalendarIcon,
-  Search,
-  Settings,
-  Plus,
-  Trash2,
-  Download,
-  Wallet,
-  CreditCard,
-  Coffee,
-  Car,
-  Film,
-  Home,
-  ShoppingBag,
-  Smartphone,
-  ChevronLeft,
-  ChevronRight,
-  TrendingUp,
-  TrendingDown,
-  Receipt
+  Search, Settings, Plus, X, ChevronLeft, ChevronRight,
+  PieChart as ChartIcon, BarChart3, LayoutGrid, List, Wallet,
+  Car, Train, Umbrella, ShoppingBag, Coffee, MoreHorizontal,
+  Trash2, Edit2, Check, DollarSign, Euro, PoundSterling, JapaneseYen,
+  ArrowRightLeft, Minus, Filter, MapPin, Calendar, Clock, MoreVertical,
+  CreditCard, Banknote, Repeat, Flag
 } from 'lucide-react';
 import {
-  LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 
-// --- 模擬資料庫與初始設定 (Mock Supabase Database) ---
-
+// --- Mock Data & Constants ---
 const generateId = () => Math.random().toString(36).substr(2, 9);
-const todayStr = new Date().toISOString().split('T')[0];
 
 const INITIAL_CATEGORIES = [
-  { id: 'cat-1', name: '餐飲', icon: 'Coffee', created_at: new Date().toISOString() },
-  { id: 'cat-2', name: '交通', icon: 'Car', created_at: new Date().toISOString() },
-  { id: 'cat-3', name: '娛樂', icon: 'Film', created_at: new Date().toISOString() },
-  { id: 'cat-4', name: '居住', icon: 'Home', created_at: new Date().toISOString() },
-  { id: 'cat-5', name: '購物', icon: 'ShoppingBag', created_at: new Date().toISOString() },
+  { id: 'cat-1', name: '假期', icon: 'Umbrella', color: '#ef4444', bgColor: 'bg-red-500/20', textColor: 'text-red-500' },
+  { id: 'cat-2', name: '汽車', icon: 'Car', color: '#3b82f6', bgColor: 'bg-blue-500/20', textColor: 'text-blue-500' },
+  { id: 'cat-3', name: '悠遊卡', icon: 'Train', color: '#10b981', bgColor: 'bg-emerald-500/20', textColor: 'text-emerald-500' },
+  { id: 'cat-4', name: '購物', icon: 'ShoppingBag', color: '#a855f7', bgColor: 'bg-purple-500/20', textColor: 'text-purple-500' },
+  { id: 'cat-5', name: '餐飲', icon: 'Coffee', color: '#f59e0b', bgColor: 'bg-amber-500/20', textColor: 'text-amber-500' },
 ];
+
+const CURRENCIES = [
+  { code: 'TWD', name: '新台幣', symbol: 'NT$' },
+  { code: 'USD', name: '美元', symbol: '$' },
+  { code: 'EUR', name: '歐元', symbol: '€' },
+  { code: 'JPY', name: '日圓', symbol: '¥' },
+  { code: 'GBP', name: '英鎊', symbol: '£' },
+  { code: 'CNY', name: '人民幣', symbol: '¥' },
+  { code: 'KRW', name: '韓元', symbol: '₩' },
+  { code: 'HKD', name: '港幣', symbol: 'HK$' },
+  { code: 'AUD', name: '澳幣', symbol: 'A$' },
+  { code: 'CAD', name: '加幣', symbol: 'C$' },
+  { code: 'SGD', name: '新加坡幣', symbol: 'S$' },
+];
+
+const YEARS = [2024, 2025, 2026, 2027, 2028];
 
 const INITIAL_PAYMENT_METHODS = [
-  { id: 'pay-1', name: '現金', created_at: new Date().toISOString() },
-  { id: 'pay-2', name: '信用卡', created_at: new Date().toISOString() },
-  { id: 'pay-3', name: 'LinePay', created_at: new Date().toISOString() },
+  { id: 'pay-1', name: '現金', icon: 'Banknote' },
+  { id: 'pay-2', name: '刷卡', icon: 'CreditCard' },
 ];
 
-// 產生過去 14 天的假資料以供圖表展示
-const generateMockTransactions = () => {
+const generateMockTransactions = (categories: any[]) => {
   const txs = [];
-  const now = new Date();
-  for (let i = 0; i < 30; i++) {
-    const d = new Date(now);
-    d.setDate(now.getDate() - Math.floor(Math.random() * 14));
-    txs.push({
-      id: generateId(),
-      amount: Math.floor(Math.random() * 800) + 50,
-      category_id: INITIAL_CATEGORIES[Math.floor(Math.random() * INITIAL_CATEGORIES.length)].id,
-      payment_id: INITIAL_PAYMENT_METHODS[Math.floor(Math.random() * INITIAL_PAYMENT_METHODS.length)].id,
-      note: ['午餐', '搭車', '看電影', '買衣服', '買飲料', '晚餐'][Math.floor(Math.random() * 6)],
-      date: d.toISOString().split('T')[0],
-      created_at: new Date().toISOString()
-    });
+  for (let m = 1; m <= 12; m++) {
+    const numTx = Math.floor(Math.random() * 5) + 1;
+    for (let i = 0; i < numTx; i++) {
+      const cat = categories[Math.floor(Math.random() * categories.length)];
+      txs.push({
+        id: generateId(),
+        amount: Math.floor(Math.random() * 5000) + 100,
+        category_id: cat.id,
+        date: `2026-${String(m).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`,
+        note: `Mock ${cat.name}`,
+        currency: 'TWD',
+        location: '台北市',
+        time: '12:00',
+        payment_method: 'pay-1'
+      });
+    }
   }
+  txs.push({ id: generateId(), amount: 86576, category_id: 'cat-1', date: '2026-01-15', note: '日本行', currency: 'TWD', location: '東京', time: '09:30', payment_method: 'pay-2' });
+  txs.push({ id: generateId(), amount: 39557, category_id: 'cat-2', date: '2026-02-10', note: '保養', currency: 'TWD', location: '修車廠', time: '14:00', payment_method: 'pay-2' });
   return txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
-const INITIAL_TRANSACTIONS = generateMockTransactions();
-const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
-
-// --- 共用輔助函式 ---
-
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(amount);
+const formatCurrency = (amount: number, currencyCode: string = 'TWD') => {
+  const currency = CURRENCIES.find(c => c.code === currencyCode) || CURRENCIES[0];
+  return new Intl.NumberFormat('en-US', { 
+    style: 'currency', 
+    currency: currencyCode,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount);
 };
 
 const IconMap: Record<string, React.ReactNode> = {
-  Coffee: <Coffee size={20} />,
-  Car: <Car size={20} />,
-  Film: <Film size={20} />,
-  Home: <Home size={20} />,
-  ShoppingBag: <ShoppingBag size={20} />,
-  Wallet: <Wallet size={20} />,
-  CreditCard: <CreditCard size={20} />,
-  Smartphone: <Smartphone size={20} />
+  Umbrella: <Umbrella size={24} />,
+  Car: <Car size={24} />,
+  Train: <Train size={24} />,
+  ShoppingBag: <ShoppingBag size={24} />,
+  Coffee: <Coffee size={24} />,
+  Wallet: <Wallet size={24} />,
+  Banknote: <Banknote size={24} />,
+  CreditCard: <CreditCard size={24} />,
 };
 
-const getCategoryIcon = (iconName: string) => IconMap[iconName] || <Wallet size={20} />;
-
-// CSV 匯出輔助函式
-const exportToCSV = (transactions: any[], categories: any[], paymentMethods: any[], filename = 'transactions.csv') => {
-  const headers = ['日期', '類別', '支付方式', '金額', '備註'];
-  const rows = transactions.map(tx => {
-    const cat = categories.find(c => c.id === tx.category_id)?.name || '未知';
-    const pay = paymentMethods.find(p => p.id === tx.payment_id)?.name || '未知';
-    return [tx.date, cat, pay, tx.amount, tx.note];
-  });
-
-  const csvContent = [
-    headers.join(','),
-    ...rows.map(row => row.join(','))
-  ].join('\n');
-
-  // 加入 BOM 以支援 Excel 顯示中文
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('url');
-  const url = URL.createObjectURL(blob);
-  
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-};
-
-
-// --- 主應用程式元件 ---
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  
-  // 模擬 Supabase State
+  const [activeTab, setActiveTab] = useState('overview');
   const [categories, setCategories] = useState(INITIAL_CATEGORIES);
   const [paymentMethods, setPaymentMethods] = useState(INITIAL_PAYMENT_METHODS);
-  const [transactions, setTransactions] = useState(INITIAL_TRANSACTIONS);
-  const [budget, setBudget] = useState(20000); // 預設預算
+  const [transactions, setTransactions] = useState(() => generateMockTransactions(INITIAL_CATEGORIES));
+  const [budgets, setBudgets] = useState<{id: string, amount: number, category_id: string, repeat: string}[]>([]);
+  const [currentYear, setCurrentYear] = useState(2026);
+  
+  // UI States
+  const [isYearSelectorOpen, setIsYearSelectorOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // --- 資料處理與衍生狀態 (即時更新) ---
-  const today = new Date().toISOString().split('T')[0];
-  const currentMonthPrefix = today.substring(0, 7); // YYYY-MM
+  // New Tx State
+  const [isNewTxOpen, setIsNewTxOpen] = useState(false);
+  const [newAmount, setNewAmount] = useState('');
+  const [newType, setNewType] = useState('expense');
+  const [newCatId, setNewCatId] = useState(categories[0].id);
+  const [newNote, setNewNote] = useState('');
+  const [newCurrency, setNewCurrency] = useState('TWD');
+  const [isCurrencySelectOpen, setIsCurrencySelectOpen] = useState(false);
+  const [newLocation, setNewLocation] = useState('');
+  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newTime, setNewTime] = useState('12:00');
+  const [isTimeEnabled, setIsTimeEnabled] = useState(false);
+  const [newPaymentMethod, setNewPaymentMethod] = useState(INITIAL_PAYMENT_METHODS[0].id);
+  const [newPaymentMethodName, setNewPaymentMethodName] = useState('');
+  const [isAddPaymentOpen, setIsAddPaymentOpen] = useState(false);
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
 
-  const monthTransactions = useMemo(() => 
-    transactions.filter(tx => tx.date.startsWith(currentMonthPrefix)),
-  [transactions, currentMonthPrefix]);
+  // Budget State
+  const [isNewBudgetOpen, setIsNewBudgetOpen] = useState(false);
+  const [newBudgetAmount, setNewBudgetAmount] = useState('');
+  const [newBudgetCatId, setNewBudgetCatId] = useState('');
+  const [newBudgetRepeat, setNewBudgetRepeat] = useState('每月');
+  const [newBudgetNote, setNewBudgetNote] = useState('');
 
-  const monthTotal = useMemo(() => 
-    monthTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0),
-  [monthTransactions]);
+  // Transaction Detail State
+  const [selectedTx, setSelectedTx] = useState<any>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  const todayTotal = useMemo(() => 
-    transactions.filter(tx => tx.date === today).reduce((sum, tx) => sum + Number(tx.amount), 0),
-  [transactions, today]);
+  // Filter State
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterDate, setFilterDate] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
 
-  const budgetProgress = Math.min((monthTotal / budget) * 100, 100);
-  const progressColor = budgetProgress < 70 ? 'bg-emerald-500' : budgetProgress < 90 ? 'bg-amber-500' : 'bg-rose-500';
+  // Category Selection/Edit State
+  const [isCatSelectOpen, setIsCatSelectOpen] = useState(false);
+  const [isCatEditMode, setIsCatEditMode] = useState(false);
+  const [isAddCatOpen, setIsAddCatOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState('');
 
-  // 新增交易
-  const handleAddTransaction = (newTx: any) => {
-    setTransactions([{ ...newTx, id: generateId(), created_at: new Date().toISOString() }, ...transactions]);
+  const handleSaveTx = () => {
+    if (!newAmount) return;
+    
+    const txData = {
+      amount: Number(newAmount),
+      category_id: newCatId,
+      date: newDate,
+      note: newNote,
+      currency: newCurrency,
+      location: newLocation,
+      time: isTimeEnabled ? newTime : undefined,
+      payment_method: newPaymentMethod
+    };
+
+    if (editingTxId) {
+      setTransactions(transactions.map(t => t.id === editingTxId ? { ...t, ...txData } : t).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setEditingTxId(null);
+    } else {
+      const tx = {
+        id: generateId(),
+        ...txData
+      };
+      setTransactions([tx, ...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    }
+    
+    setIsNewTxOpen(false);
+    resetForm();
   };
 
-  // 刪除交易
-  const handleDeleteTransaction = (id: string) => {
-    setTransactions(transactions.filter(tx => tx.id !== id));
+  const resetForm = () => {
+    setNewAmount('');
+    setNewNote('');
+    setNewCurrency('TWD');
+    setNewLocation('');
+    setNewDate(new Date().toISOString().split('T')[0]);
+    setNewTime('12:00');
+    setIsTimeEnabled(false);
+    setNewPaymentMethod(paymentMethods[0].id);
+    setEditingTxId(null);
   };
 
+  const handleEditTx = (tx: any) => {
+    setEditingTxId(tx.id);
+    setNewAmount(String(tx.amount));
+    setNewCatId(tx.category_id);
+    setNewDate(tx.date);
+    setNewNote(tx.note || '');
+    setNewCurrency(tx.currency || 'TWD');
+    setNewLocation(tx.location || '');
+    setNewPaymentMethod(tx.payment_method || paymentMethods[0].id);
+    if (tx.time) {
+      setNewTime(tx.time);
+      setIsTimeEnabled(true);
+    } else {
+      setIsTimeEnabled(false);
+    }
+    setSelectedTx(null);
+    setIsNewTxOpen(true);
+  };
 
-  // --- 各分頁元件 ---
+  const handleAddPaymentMethod = () => {
+    if (!newPaymentMethodName) return;
+    const newMethod = {
+      id: generateId(),
+      name: newPaymentMethodName,
+      icon: 'CreditCard'
+    };
+    setPaymentMethods([...paymentMethods, newMethod]);
+    setNewPaymentMethod(newMethod.id);
+    setNewPaymentMethodName('');
+    setIsAddPaymentOpen(false);
+  };
 
-  // 1. 儀表板 (Dashboard)
-  const Dashboard = () => {
-    const [amount, setAmount] = useState('');
-    const [categoryId, setCategoryId] = useState(categories[0]?.id || '');
-    const [paymentId, setPaymentId] = useState(paymentMethods[0]?.id || '');
-    const [date, setDate] = useState(today);
-    const [note, setNote] = useState('');
+  const handleSaveBudget = () => {
+    if (!newBudgetAmount || !newBudgetCatId) return;
+    const newBudget = {
+      id: generateId(),
+      amount: Number(newBudgetAmount),
+      category_id: newBudgetCatId,
+      repeat: newBudgetRepeat,
+      note: newBudgetNote
+    };
+    setBudgets([...budgets, newBudget]);
+    setIsNewBudgetOpen(false);
+    setNewBudgetAmount('');
+    setNewBudgetCatId('');
+    setNewBudgetNote('');
+  };
 
-    const handleSubmit = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!amount || !categoryId || !paymentId || !date) return;
-      handleAddTransaction({ amount: Number(amount), category_id: categoryId, payment_id: paymentId, date, note });
-      setAmount('');
-      setNote('');
+  const handleDeleteTx = () => {
+    if (selectedTx) {
+      setTransactions(transactions.filter(t => t.id !== selectedTx.id));
+      setSelectedTx(null);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleAddCategory = () => {
+    if (!newCatName) return;
+    const newCat = {
+      id: generateId(),
+      name: newCatName,
+      icon: 'Wallet', // Default icon
+      color: '#9ca3af', // Default gray
+      bgColor: 'bg-gray-500/20',
+      textColor: 'text-gray-500'
+    };
+    setCategories([...categories, newCat]);
+    setNewCatName('');
+    setIsAddCatOpen(false);
+  };
+
+  const handleDeleteCategory = (id: string) => {
+    setCategories(categories.filter(c => c.id !== id));
+    if (newCatId === id) {
+      setNewCatId(categories[0]?.id || '');
+    }
+  };
+
+  // Overview Data
+  const yearTransactions = useMemo(() => 
+    transactions.filter(tx => tx.date.startsWith(String(currentYear))), 
+  [transactions, currentYear]);
+
+  const totalExpense = useMemo(() => yearTransactions.reduce((sum, tx) => sum + tx.amount, 0), [yearTransactions]);
+  
+  const categoryStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    yearTransactions.forEach(tx => {
+      if (categories.find(c => c.id === tx.category_id)) {
+        stats[tx.category_id] = (stats[tx.category_id] || 0) + tx.amount;
+      }
+    });
+    return categories.map(c => ({
+      ...c,
+      value: stats[c.id] || 0,
+      percentage: totalExpense ? ((stats[c.id] || 0) / totalExpense) * 100 : 0
+    })).filter(c => c.value > 0).sort((a, b) => b.value - a.value);
+  }, [yearTransactions, totalExpense, categories]);
+
+  const monthlyData = useMemo(() => {
+    const data: any[] = [];
+    for (let i = 1; i <= 12; i++) {
+      const monthPrefix = `${currentYear}-${String(i).padStart(2, '0')}`;
+      const monthTxs = yearTransactions.filter(tx => tx.date.startsWith(monthPrefix));
+      const monthObj: any = { name: `${i}月` };
+      categories.forEach(c => {
+        monthObj[c.id] = monthTxs.filter(tx => tx.category_id === c.id).reduce((s, t) => s + t.amount, 0);
+      });
+      data.push(monthObj);
+    }
+    return data;
+  }, [yearTransactions, categories, currentYear]);
+
+  // Search Logic
+  const filteredTransactions = useMemo(() => {
+    if (!searchQuery) return [];
+    return transactions.filter(tx => {
+      const cat = categories.find(c => c.id === tx.category_id);
+      return (
+        tx.note.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cat?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(tx.amount).includes(searchQuery)
+      );
+    });
+  }, [transactions, searchQuery, categories]);
+
+  const TransactionsView = () => {
+    // Filter transactions
+    const filteredTxs = useMemo(() => {
+      return yearTransactions.filter(tx => {
+        const matchDate = !filterDate || tx.date === filterDate;
+        const matchCat = !filterCategory || tx.category_id === filterCategory;
+        return matchDate && matchCat;
+      });
+    }, [yearTransactions, filterDate, filterCategory]);
+
+    // Group transactions by date
+    const groupedTransactions = useMemo(() => {
+      const groups: Record<string, typeof transactions> = {};
+      filteredTxs.forEach(tx => {
+        if (!groups[tx.date]) {
+          groups[tx.date] = [];
+        }
+        groups[tx.date].push(tx);
+      });
+      return groups;
+    }, [filteredTxs]);
+
+    // Sort dates descending
+    const sortedDates = useMemo(() => {
+      return Object.keys(groupedTransactions).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+    }, [groupedTransactions]);
+
+    const getDayOfWeek = (dateStr: string) => {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const date = new Date(y, m - 1, d);
+      const days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+      return days[date.getDay()];
+    };
+
+    const formatDateHeader = (dateStr: string) => {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return `${y}年${m}月${d}日 ${getDayOfWeek(dateStr)}`;
     };
 
     return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-        {/* 彙整卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="text-slate-500 text-sm font-medium mb-1">本月總支出</h3>
-            <p className="text-3xl font-bold text-slate-800">{formatCurrency(monthTotal)}</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h3 className="text-slate-500 text-sm font-medium mb-1">今日支出</h3>
-            <p className="text-3xl font-bold text-slate-800">{formatCurrency(todayTotal)}</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <div className="flex justify-between items-end mb-2">
-              <h3 className="text-slate-500 text-sm font-medium">預算達成率</h3>
-              <span className="text-sm font-semibold text-slate-700">{budgetProgress.toFixed(1)}%</span>
-            </div>
-            <div className="w-full bg-slate-100 rounded-full h-2.5 mb-1 overflow-hidden">
-              <div className={`h-2.5 rounded-full transition-all duration-500 ${progressColor}`} style={{ width: `${budgetProgress}%` }}></div>
-            </div>
-            <p className="text-xs text-slate-400 text-right">上限: {formatCurrency(budget)}</p>
-          </div>
+      <div className="pb-24 animate-in fade-in duration-300 pt-20 px-4">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-white">交易</h1>
+          <button 
+            onClick={() => setIsFilterOpen(!isFilterOpen)}
+            className={`p-2 rounded-full transition-colors ${isFilterOpen || filterDate || filterCategory ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-zinc-400'}`}
+          >
+            <Filter size={20} />
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 快速輸入表單 */}
-          <div className="lg:col-span-1 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><Plus className="mr-2 w-5 h-5 text-indigo-600" /> 快速記帳</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+        {isFilterOpen && (
+          <div className="bg-zinc-900 rounded-2xl p-4 mb-6 animate-in slide-in-from-top-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">金額</label>
-                <input type="number" required min="1" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none" placeholder="0" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">類別</label>
-                  <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
-                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">支付方式</label>
-                  <select value={paymentId} onChange={(e) => setPaymentId(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none">
-                    {paymentMethods.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                </div>
+                <label className="text-xs text-zinc-500 mb-1 block">日期</label>
+                <input 
+                  type="date" 
+                  value={filterDate} 
+                  onChange={e => setFilterDate(e.target.value)}
+                  className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">日期</label>
-                <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+                <label className="text-xs text-zinc-500 mb-1 block">分類</label>
+                <select 
+                  value={filterCategory} 
+                  onChange={e => setFilterCategory(e.target.value)}
+                  className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm appearance-none"
+                >
+                  <option value="">全部</option>
+                  {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">備註 (選填)</label>
-                <input type="text" value={note} onChange={(e) => setNote(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="例如：午餐便當" />
-              </div>
-              <button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl transition-colors shadow-sm shadow-indigo-200">
-                儲存紀錄
+            </div>
+            {(filterDate || filterCategory) && (
+              <button 
+                onClick={() => { setFilterDate(''); setFilterCategory(''); }}
+                className="mt-3 text-xs text-red-400 font-medium"
+              >
+                清除篩選
               </button>
-            </form>
-          </div>
-
-          {/* 近期動態 */}
-          <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><Receipt className="mr-2 w-5 h-5 text-indigo-600" /> 近期動態</h2>
-            {transactions.length === 0 ? (
-              <div className="text-center text-slate-500 py-10">尚無交易紀錄</div>
-            ) : (
-              <div className="space-y-3">
-                {transactions.slice(0, 6).map(tx => {
-                  const cat = categories.find(c => c.id === tx.category_id);
-                  const pay = paymentMethods.find(p => p.id === tx.payment_id);
-                  return (
-                    <div key={tx.id} className="flex items-center justify-between p-4 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-all group">
-                      <div className="flex items-center space-x-4">
-                        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-full">
-                          {cat ? getCategoryIcon(cat.icon) : <Receipt size={20} />}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-slate-800">{tx.note || cat?.name || '未分類'}</p>
-                          <p className="text-xs text-slate-400">{tx.date} • {pay?.name}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-4">
-                        <span className="font-bold text-rose-500">-{formatCurrency(tx.amount)}</span>
-                        <button onClick={() => handleDeleteTransaction(tx.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             )}
           </div>
+        )}
+
+        {/* Expense Summary Card */}
+        <div className="mb-8">
+           <div className="bg-zinc-900 rounded-3xl p-5 flex items-center justify-between">
+              <div>
+                <p className="text-zinc-400 text-sm mb-1">支出</p>
+                <p className="text-3xl font-bold text-red-500">-{formatCurrency(totalExpense)}</p>
+              </div>
+           </div>
+        </div>
+
+        {/* Transaction List */}
+        <div className="space-y-8">
+          {sortedDates.map(date => {
+            const dailyTxs = groupedTransactions[date];
+            const dailyTotal = dailyTxs.reduce((sum, tx) => sum + tx.amount, 0);
+
+            return (
+              <div key={date}>
+                <h3 className="text-white font-bold text-lg mb-3 ml-1">
+                  {formatDateHeader(date)}
+                </h3>
+                <div className="bg-zinc-900 rounded-3xl overflow-hidden">
+                  {dailyTxs.map((tx, idx) => {
+                    const cat = categories.find(c => c.id === tx.category_id);
+                    const payMethod = paymentMethods.find(p => p.id === tx.payment_method);
+                    return (
+                      <div 
+                        key={tx.id} 
+                        onClick={() => setSelectedTx(tx)}
+                        className={`flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-800/50 transition-colors ${idx !== dailyTxs.length - 1 ? 'border-b border-zinc-800' : ''}`}
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat?.bgColor || 'bg-zinc-800'} ${cat?.textColor || 'text-zinc-400'}`}>
+                            {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
+                          </div>
+                          <div>
+                            <p className="text-white font-medium text-base">{tx.note || cat?.name}</p>
+                            <div className="flex items-center text-zinc-500 text-xs mt-0.5">
+                               <span>{cat?.name}</span>
+                               {tx.time && <span className="mx-1">• {tx.time}</span>}
+                               {payMethod && <span className="mx-1">• {payMethod.name}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                           <p className="text-red-500 font-bold">-{formatCurrency(tx.amount, tx.currency)}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Daily Total */}
+                <div className="mt-2 text-right px-2">
+                   <span className="text-zinc-500 text-sm mr-2">總計:</span>
+                   <span className="text-red-500 font-bold">-{formatCurrency(dailyTotal)}</span>
+                </div>
+              </div>
+            );
+          })}
+          
+          {sortedDates.length === 0 && (
+            <div className="text-center text-zinc-500 py-10">
+              沒有符合條件的交易紀錄
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
-  // 2. 統計分析 (Statistics)
-  const Statistics = () => {
-    // 圓餅圖：類別支出比例
-    const categoryData = useMemo(() => {
-      const data: Record<string, number> = {};
-      monthTransactions.forEach(tx => {
-        const catName = categories.find(c => c.id === tx.category_id)?.name || '其他';
-        data[catName] = (data[catName] || 0) + Number(tx.amount);
-      });
-      return Object.keys(data).map(key => ({ name: key, value: data[key] })).sort((a,b)=>b.value - a.value);
-    }, [monthTransactions, categories]);
-
-    // 環狀圖：支付方式比例
-    const paymentData = useMemo(() => {
-      const data: Record<string, number> = {};
-      monthTransactions.forEach(tx => {
-        const payName = paymentMethods.find(p => p.id === tx.payment_id)?.name || '其他';
-        data[payName] = (data[payName] || 0) + Number(tx.amount);
-      });
-      return Object.keys(data).map(key => ({ name: key, value: data[key] }));
-    }, [monthTransactions, paymentMethods]);
-
-    // 折線圖：本週 vs 上週
-    const trendData = useMemo(() => {
-      const data = [];
-      const now = new Date();
-      // 產生過去 7 天的標籤
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(now.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
-        
-        const lastWeekD = new Date(d);
-        lastWeekD.setDate(d.getDate() - 7);
-        const lastWeekStr = lastWeekD.toISOString().split('T')[0];
-
-        const thisWeekTotal = transactions.filter(t => t.date === dateStr).reduce((s, t) => s + Number(t.amount), 0);
-        const lastWeekTotal = transactions.filter(t => t.date === lastWeekStr).reduce((s, t) => s + Number(t.amount), 0);
-
-        data.push({
-          name: `${d.getMonth()+1}/${d.getDate()}`,
-          '本週支出': thisWeekTotal,
-          '上週支出': lastWeekTotal
-        });
-      }
-      return data;
-    }, [transactions]);
-
-    // 排行榜
-    const topExpenses = useMemo(() => {
-      return [...monthTransactions].sort((a, b) => b.amount - a.amount).slice(0, 5);
-    }, [monthTransactions]);
+  const Overview = () => {
+    const [chartType, setChartType] = useState<'pie' | 'bar'>('pie');
 
     return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800 mb-6">近七日消費趨勢 (本週 vs 上週)</h2>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={trendData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Legend iconType="circle" />
-                <Line type="monotone" dataKey="本週支出" stroke="#6366f1" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="上週支出" stroke="#cbd5e1" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+      <div className="pb-24 animate-in fade-in duration-300 pt-20">
+        <h1 className="text-3xl font-bold text-white px-4 mb-6">概覽</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h2 className="text-lg font-bold text-slate-800 mb-6">類別支出比例 (本月)</h2>
-            <div className="h-64">
+        {/* Chart Card */}
+        <div className="mx-4 bg-zinc-900 rounded-3xl p-5 mb-8">
+          <div className="flex justify-between items-start mb-6">
+            <div>
+              <p className="text-zinc-400 text-sm mb-1">總支出 ({currentYear}年)</p>
+              <p className="text-3xl font-bold text-white">{formatCurrency(totalExpense)}</p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="bg-zinc-800 rounded-full p-1 flex">
+                <button onClick={() => setChartType('bar')} className={`p-1.5 rounded-full ${chartType === 'bar' ? 'bg-zinc-700 text-emerald-400' : 'text-zinc-400'}`}>
+                  <BarChart3 size={18} />
+                </button>
+                <button onClick={() => setChartType('pie')} className={`p-1.5 rounded-full ${chartType === 'pie' ? 'bg-zinc-700 text-emerald-400' : 'text-zinc-400'}`}>
+                  <ChartIcon size={18} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {chartType === 'pie' ? (
+            <div className="relative h-64">
+              <div className="absolute top-0 left-0">
+                <p className="text-zinc-400 text-xs">交易</p>
+                <p className="text-white font-medium">{yearTransactions.length}</p>
+              </div>
+              <div className="absolute top-0 right-0 text-right">
+                <p className="text-zinc-400 text-xs">類別</p>
+                <p className="text-white font-medium">{categoryStats.length}</p>
+              </div>
+              <div className="absolute bottom-0 left-0">
+                <p className="text-white font-medium">{formatCurrency(totalExpense / (yearTransactions.length || 1))}</p>
+                <p className="text-zinc-400 text-xs">平均每筆交易</p>
+              </div>
+              <div className="absolute bottom-0 right-0 text-right">
+                <p className="text-white font-medium">{formatCurrency(totalExpense / 365)}</p>
+                <p className="text-zinc-400 text-xs">平均每日值</p>
+              </div>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={categoryData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({name, percent}) => `${name} ${(percent * 100).toFixed(0)}%`}>
-                    {categoryData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                  <Pie data={categoryStats} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="value" stroke="none">
+                    {categoryStats.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                   </Pie>
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                  <Tooltip contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '8px', color: '#fff' }} itemStyle={{ color: '#fff' }} formatter={(value: number) => formatCurrency(value)} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h2 className="text-lg font-bold text-slate-800 mb-6">支付方式比例 (本月)</h2>
+          ) : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={paymentData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} dataKey="value" paddingAngle={5}>
-                    {paymentData.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[(index + 2) % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                  <Legend verticalAlign="bottom" height={36} iconType="circle"/>
-                </PieChart>
+                <BarChart data={monthlyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} tickFormatter={(val) => val === 0 ? '0' : val.toLocaleString()} />
+                  <Tooltip cursor={{ fill: '#27272a' }} contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '8px', color: '#fff' }} />
+                  {categories.map(c => (
+                    <Bar key={c.id} dataKey={c.id} stackId="a" fill={c.color} radius={[0, 0, 0, 0]} />
+                  ))}
+                </BarChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          )}
         </div>
 
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h2 className="text-lg font-bold text-slate-800 mb-4">本月前 5 大支出</h2>
-          <div className="space-y-3">
-            {topExpenses.map((tx, idx) => {
-               const cat = categories.find(c => c.id === tx.category_id);
-               return (
-                 <div key={tx.id} className="flex items-center justify-between p-3 border-b border-slate-50 last:border-0">
-                   <div className="flex items-center space-x-4">
-                     <span className="text-slate-400 font-bold w-4">{idx + 1}</span>
-                     <div>
-                       <p className="font-semibold text-slate-800">{tx.note || cat?.name || '未分類'}</p>
-                       <p className="text-xs text-slate-400">{tx.date}</p>
-                     </div>
-                   </div>
-                   <span className="font-bold text-rose-500">{formatCurrency(tx.amount)}</span>
-                 </div>
-               );
-            })}
-            {topExpenses.length === 0 && <div className="text-center text-slate-400 py-4">無資料</div>}
+        {/* Category List */}
+        <div className="px-4">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-bold text-white">總支出</h2>
+            <span className="text-emerald-400 text-sm font-medium">分組</span>
+          </div>
+          <div className="bg-zinc-900 rounded-3xl p-2">
+            {categoryStats.map((cat, idx) => (
+              <div key={cat.id} className="flex items-center p-3 border-b border-zinc-800 last:border-0">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${cat.bgColor} ${cat.textColor} mr-4`}>
+                  {IconMap[cat.icon] || <Wallet size={24} />}
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-medium mb-1">{cat.name}</p>
+                  <div className="w-full bg-zinc-800 rounded-full h-1.5">
+                    <div className="h-1.5 rounded-full" style={{ width: `${cat.percentage}%`, backgroundColor: cat.color }}></div>
+                  </div>
+                </div>
+                <div className="text-right ml-4">
+                  <p className="text-zinc-400 text-sm mb-0.5">{cat.percentage.toFixed(0)} %</p>
+                  <p className="text-red-400 font-medium">-{formatCurrency(cat.value)}</p>
+                </div>
+                <ChevronRight size={16} className="text-zinc-600 ml-2" />
+              </div>
+            ))}
           </div>
         </div>
       </div>
     );
   };
 
-  // 3. 日曆視圖 (Calendar)
-  const CalendarView = () => {
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [selectedDate, setSelectedDate] = useState<string | null>(null);
-
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    const days = [];
-    for (let i = 0; i < firstDay; i++) days.push(null);
-    for (let i = 1; i <= daysInMonth; i++) days.push(i);
-
-    const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
-
-    const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-    const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
-
-    const selectedTransactions = selectedDate 
-      ? transactions.filter(tx => tx.date === selectedDate)
-      : [];
+  const BudgetView = () => {
+    const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
+    const totalSpent = totalExpense; // Simplified: using total expense for now
+    const remaining = totalBudget - totalSpent;
 
     return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold text-slate-800">{year}年 {month + 1}月</h2>
-            <div className="flex space-x-2">
-              <button onClick={prevMonth} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"><ChevronLeft size={20}/></button>
-              <button onClick={nextMonth} className="p-2 rounded-lg hover:bg-slate-100 text-slate-600"><ChevronRight size={20}/></button>
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-7 gap-2 mb-2 text-center text-sm font-semibold text-slate-400">
-            <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
-          </div>
-          
-          <div className="grid grid-cols-7 gap-2">
-            {days.map((day, idx) => {
-              if (!day) return <div key={`empty-${idx}`} className="h-24 rounded-xl bg-transparent"></div>;
-              
-              const fullDate = `${monthStr}-${String(day).padStart(2, '0')}`;
-              const dayTotal = transactions.filter(t => t.date === fullDate).reduce((s, t) => s + Number(t.amount), 0);
-              const isToday = fullDate === today;
-              const isSelected = fullDate === selectedDate;
+      <div className="pb-24 animate-in fade-in duration-300 pt-20 px-4">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold text-white">預算</h1>
+          <button onClick={() => setIsNewBudgetOpen(true)} className="bg-zinc-800 p-2 rounded-full text-white">
+             <Plus size={24} />
+          </button>
+        </div>
 
-              return (
-                <div 
-                  key={day} 
-                  onClick={() => setSelectedDate(fullDate)}
-                  className={`h-20 md:h-24 p-2 rounded-xl border cursor-pointer transition-all flex flex-col justify-between
-                    ${isSelected ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 bg-slate-50 hover:border-indigo-300'}
-                    ${isToday ? 'ring-2 ring-indigo-200' : ''}
-                  `}
-                >
-                  <div className={`text-sm font-medium ${isToday ? 'text-indigo-600' : 'text-slate-600'}`}>{day}</div>
-                  {dayTotal > 0 && (
-                    <div className="text-xs font-bold text-rose-500 text-right truncate">
-                      -{dayTotal}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-zinc-900 p-4 rounded-3xl">
+             <div className="flex justify-between items-start mb-2">
+               <span className="text-zinc-400 text-sm">計劃中</span>
+               <div className="bg-zinc-800 p-1 rounded-full text-zinc-400"><Minus size={16}/></div>
+             </div>
+             <p className="text-emerald-400 text-xl font-bold">{formatCurrency(totalBudget)}</p>
+          </div>
+          <div className="bg-zinc-900 p-4 rounded-3xl">
+             <div className="flex justify-between items-start mb-2">
+               <span className="text-zinc-400 text-sm">剩餘</span>
+               <div className="bg-zinc-800 p-1 rounded-full text-zinc-400"><Check size={16}/></div>
+             </div>
+             <p className="text-emerald-400 text-xl font-bold">{formatCurrency(remaining)}</p>
+          </div>
+        </div>
+
+        <div className="bg-zinc-900 rounded-3xl p-4 mb-8 flex items-center space-x-2">
+           <span className="text-2xl">🎉</span>
+           <span className="text-white font-medium">您在預算內！</span>
+        </div>
+
+        <h2 className="text-white font-bold text-lg mb-4">每月</h2>
+        <div className="space-y-4">
+           {budgets.map(budget => {
+             const cat = categories.find(c => c.id === budget.category_id);
+             // Calculate spent for this category (simplified for demo)
+             const spent = yearTransactions
+               .filter(tx => tx.category_id === budget.category_id)
+               .reduce((sum, tx) => sum + tx.amount, 0);
+             const percent = Math.min((spent / budget.amount) * 100, 100);
+
+             return (
+               <div key={budget.id} className="bg-zinc-900 rounded-3xl p-4">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center space-x-3">
+                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat?.bgColor || 'bg-zinc-800'} ${cat?.textColor || 'text-zinc-400'}`}>
+                          {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
+                       </div>
+                       <div>
+                         <p className="text-white font-medium">{cat?.name || '未分類'}</p>
+                         <p className="text-zinc-400 text-xs">剩餘</p>
+                       </div>
                     </div>
-                  )}
+                    <div className="text-right">
+                       <p className="text-zinc-500 text-xs mb-1">1月01日 - 12月31日</p>
+                       <div className="flex items-center justify-end text-emerald-400 font-bold">
+                         {formatCurrency(budget.amount - spent)} <ChevronRight size={16} className="ml-1 text-zinc-600"/>
+                       </div>
+                    </div>
+                  </div>
+                  <div className="w-full bg-zinc-800 rounded-full h-2 mb-2">
+                    <div className="h-2 rounded-full bg-zinc-600" style={{ width: `${percent}%` }}></div>
+                  </div>
+                  <p className="text-emerald-400 text-sm font-bold">總計: {formatCurrency(budget.amount)}</p>
+               </div>
+             );
+           })}
+           {budgets.length === 0 && (
+             <div className="text-center text-zinc-500 py-8">
+               尚無預算設定
+             </div>
+           )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-black font-sans text-zinc-100 selection:bg-emerald-500/30">
+      
+      {/* Global Header (Floating) */}
+      <div className="fixed top-0 left-0 right-0 z-40 px-4 pt-8 pb-2 bg-gradient-to-b from-black via-black/80 to-transparent pointer-events-none">
+        <div className="flex justify-between items-center pointer-events-auto max-w-md mx-auto">
+          <button 
+            onClick={() => setIsYearSelectorOpen(true)}
+            className="bg-zinc-800 text-zinc-300 px-4 py-1.5 rounded-full text-sm font-medium flex items-center hover:bg-zinc-700 transition-colors"
+          >
+            年 {currentYear} <ChevronRight size={14} className="ml-1 rotate-90" />
+          </button>
+          <button 
+            onClick={() => setIsSearchOpen(true)}
+            className="bg-zinc-800 text-zinc-300 p-2 rounded-full hover:bg-zinc-700 transition-colors"
+          >
+            <Search size={20} />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <main className="max-w-md mx-auto relative min-h-screen">
+        {activeTab === 'overview' && <Overview />}
+        {activeTab === 'transactions' && <TransactionsView />}
+        {activeTab === 'budget' && <BudgetView />}
+        {activeTab === 'settings' && <div className="pt-24 text-center text-zinc-500">設定 (開發中)</div>}
+
+        {/* FAB */}
+        <button 
+          onClick={() => setIsNewTxOpen(true)}
+          className="fixed bottom-24 right-6 w-14 h-14 bg-emerald-400 rounded-full flex items-center justify-center text-black shadow-lg shadow-emerald-400/20 z-40 hover:scale-105 transition-transform"
+        >
+          <Plus size={32} />
+        </button>
+
+        {/* Tab Bar */}
+        <nav className="fixed bottom-0 w-full max-w-md bg-black/90 backdrop-blur-md border-t border-zinc-900 px-6 py-4 flex justify-between items-center z-30 pb-safe">
+          {[
+            { id: 'overview', label: '概覽', icon: <LayoutGrid size={24} /> },
+            { id: 'transactions', label: '交易', icon: <List size={24} /> },
+            { id: 'budget', label: '預算', icon: <Wallet size={24} /> },
+            { id: 'settings', label: '設定', icon: <Settings size={24} /> }
+          ].map(item => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex flex-col items-center justify-center w-16 h-12 rounded-2xl transition-all ${
+                  isActive ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500'
+                }`}
+              >
+                {item.icon}
+                <span className="text-[10px] mt-1 font-medium">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      </main>
+
+      {/* Year Selector Modal */}
+      {isYearSelectorOpen && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-zinc-900 rounded-3xl w-full max-w-xs overflow-hidden">
+            <div className="p-4 border-b border-zinc-800 flex justify-between items-center">
+              <h3 className="text-white font-bold">選擇年份</h3>
+              <button onClick={() => setIsYearSelectorOpen(false)}><X size={20} className="text-zinc-400" /></button>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {YEARS.map(year => (
+                <button
+                  key={year}
+                  onClick={() => { setCurrentYear(year); setIsYearSelectorOpen(false); }}
+                  className={`w-full p-4 text-left font-medium flex justify-between items-center hover:bg-zinc-800 transition-colors ${currentYear === year ? 'text-emerald-400' : 'text-white'}`}
+                >
+                  {year}
+                  {currentYear === year && <Check size={18} />}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search Modal */}
+      {isSearchOpen && (
+        <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in slide-in-from-bottom-10">
+          <div className="flex items-center px-4 pt-8 pb-4 border-b border-zinc-900">
+            <div className="flex-1 bg-zinc-900 rounded-xl flex items-center px-3 py-2">
+              <Search size={18} className="text-zinc-500 mr-2" />
+              <input 
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜尋分類、備註或金額..."
+                className="bg-transparent outline-none text-white w-full placeholder-zinc-600"
+                autoFocus
+              />
+            </div>
+            <button onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }} className="ml-3 text-emerald-400 font-medium">
+              取消
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            {searchQuery && filteredTransactions.length === 0 && (
+              <div className="text-center text-zinc-500 mt-10">找不到相關結果</div>
+            )}
+            {filteredTransactions.map(tx => {
+              const cat = categories.find(c => c.id === tx.category_id);
+              return (
+                <div key={tx.id} className="flex items-center justify-between p-4 bg-zinc-900 rounded-2xl mb-3">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat?.bgColor || 'bg-zinc-800'} ${cat?.textColor || 'text-zinc-400'}`}>
+                      {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
+                    </div>
+                    <div>
+                      <p className="text-white font-medium">{tx.note || cat?.name}</p>
+                      <p className="text-xs text-zinc-500">{tx.date}</p>
+                    </div>
+                  </div>
+                  <span className="text-red-400 font-medium">-{formatCurrency(tx.amount, tx.currency)}</span>
                 </div>
               );
             })}
           </div>
         </div>
+      )}
 
-        {selectedDate && (
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 animate-in slide-in-from-bottom-4">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">{selectedDate} 詳細清單</h3>
-            {selectedTransactions.length === 0 ? (
-              <p className="text-slate-500 text-center py-4">本日無支出紀錄</p>
-            ) : (
-              <div className="space-y-3">
-                {selectedTransactions.map(tx => {
-                   const cat = categories.find(c => c.id === tx.category_id);
-                   return (
-                    <div key={tx.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg">
-                      <div className="flex items-center space-x-3">
-                        <div className="text-indigo-500">{getCategoryIcon(cat?.icon || '')}</div>
-                        <div>
-                          <p className="font-medium text-slate-800">{tx.note || cat?.name}</p>
-                          <p className="text-xs text-slate-500">{paymentMethods.find(p=>p.id===tx.payment_id)?.name}</p>
-                        </div>
-                      </div>
-                      <span className="font-bold text-rose-500">-{formatCurrency(tx.amount)}</span>
-                    </div>
-                   )
-                })}
+      {/* New Transaction Modal */}
+      {isNewTxOpen && (
+        <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in slide-in-from-bottom-full duration-300 max-w-md mx-auto">
+          <div className="flex justify-between items-center px-4 pt-8 pb-4">
+            <button onClick={() => { setIsNewTxOpen(false); resetForm(); }} className="bg-zinc-800 text-zinc-300 p-2 rounded-full">
+              <X size={20} />
+            </button>
+            <h2 className="text-lg font-bold text-white">{editingTxId ? '編輯支出' : '新支出'}</h2>
+            <button onClick={handleSaveTx} className="bg-emerald-400 text-black px-4 py-1.5 rounded-full font-bold text-sm">
+              儲存
+            </button>
+          </div>
+
+          <div className="px-4 flex-1 overflow-y-auto pb-8">
+            {/* Amount Input */}
+            <div className="flex justify-between items-center mb-6 mt-4">
+              <div className="flex items-center text-5xl font-bold text-white">
+                <span className="mr-1">-</span>
+                <span>{CURRENCIES.find(c => c.code === newCurrency)?.symbol}</span>
+                <input 
+                  type="number" 
+                  value={newAmount} 
+                  onChange={e => setNewAmount(e.target.value)}
+                  placeholder="0"
+                  className="bg-transparent outline-none w-full placeholder-zinc-700 ml-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  autoFocus
+                />
               </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // 4. 進階搜尋 (Advanced Search)
-  const AdvancedSearch = () => {
-    const [keyword, setKeyword] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [filterCat, setFilterCat] = useState('');
-
-    const filtered = useMemo(() => {
-      return transactions.filter(tx => {
-        const matchKey = !keyword || tx.note?.toLowerCase().includes(keyword.toLowerCase());
-        const matchStart = !startDate || tx.date >= startDate;
-        const matchEnd = !endDate || tx.date <= endDate;
-        const matchCat = !filterCat || tx.category_id === filterCat;
-        return matchKey && matchStart && matchEnd && matchCat;
-      });
-    }, [transactions, keyword, startDate, endDate, filterCat]);
-
-    return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex justify-between items-center mb-4">
-             <h2 className="text-lg font-bold text-slate-800">進階搜尋過濾</h2>
-             <button 
-                onClick={() => exportToCSV(filtered, categories, paymentMethods, 'filtered_transactions.csv')}
-                className="text-indigo-600 hover:text-indigo-800 flex items-center text-sm font-medium bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
-             >
-               <Download size={16} className="mr-1" /> 匯出結果
-             </button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">關鍵字 (備註)</label>
-              <input type="text" value={keyword} onChange={e=>setKeyword(e.target.value)} placeholder="搜尋..." className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500" />
+              <div className="flex items-center space-x-2">
+                <button 
+                  onClick={() => setIsCurrencySelectOpen(true)}
+                  className="bg-zinc-800 text-emerald-400 px-3 py-1.5 rounded-full text-sm font-bold flex items-center hover:bg-zinc-700"
+                >
+                  {newCurrency} <ChevronRight size={16} className="ml-1"/>
+                </button>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">開始日期</label>
-              <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500" />
+
+            {/* Type Toggle */}
+            <div className="bg-zinc-900 rounded-full p-1 flex mb-8">
+              <button 
+                onClick={() => setNewType('expense')} 
+                className={`flex-1 py-2 rounded-full text-sm font-medium transition-colors ${newType === 'expense' ? 'bg-zinc-700 text-white' : 'text-zinc-400'}`}
+              >
+                支出
+              </button>
+              <button 
+                onClick={() => setNewType('transfer')} 
+                className={`flex-1 py-2 rounded-full text-sm font-medium transition-colors ${newType === 'transfer' ? 'bg-zinc-700 text-white' : 'text-zinc-400'}`}
+              >
+                轉帳
+              </button>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">結束日期</label>
-              <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500" />
+
+            {/* Category */}
+            <h3 className="text-white font-bold mb-3 px-1">分類</h3>
+            <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
+              <button 
+                onClick={() => setIsCatSelectOpen(true)}
+                className="w-full flex items-center justify-between p-3"
+              >
+                <div className="flex items-center space-x-3">
+                  <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl">
+                    <LayoutGrid size={20} />
+                  </div>
+                  <span className="text-white font-medium">分類</span>
+                </div>
+                <div className="flex items-center text-zinc-400">
+                  <span className="mr-2">{categories.find(c => c.id === newCatId)?.name || '無'}</span>
+                  <ChevronRight size={18} />
+                </div>
+              </button>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">指定類別</label>
-              <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500">
-                <option value="">全部類別</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+
+            {/* Payment Method */}
+            <h3 className="text-white font-bold mb-3 px-1">支付方式</h3>
+            <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
+               <div className="relative">
+                 <select 
+                   value={newPaymentMethod}
+                   onChange={(e) => {
+                     if (e.target.value === 'add_new') {
+                       setIsAddPaymentOpen(true);
+                     } else {
+                       setNewPaymentMethod(e.target.value);
+                     }
+                   }}
+                   className="w-full bg-transparent text-white p-3 outline-none appearance-none relative z-10"
+                 >
+                   {paymentMethods.map(pm => (
+                     <option key={pm.id} value={pm.id} className="bg-zinc-900 text-white">{pm.name}</option>
+                   ))}
+                   <option value="add_new" className="bg-zinc-900 text-emerald-400 font-bold">+ 新增支付方式</option>
+                 </select>
+                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-zinc-400 z-0">
+                   <ChevronRight size={18} className="rotate-90" />
+                 </div>
+                 <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-emerald-500 z-0 pointer-events-none">
+                    <CreditCard size={20} />
+                 </div>
+                 <div className="absolute left-12 top-1/2 transform -translate-y-1/2 text-white font-medium pointer-events-none">
+                    {/* Visual Label Overlay if needed, but select text works */}
+                 </div>
+               </div>
+            </div>
+
+            {/* Date & Time */}
+            <h3 className="text-white font-bold mb-3 px-1">日期與時間</h3>
+            <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
+              <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-orange-500/20 text-orange-500 p-2 rounded-xl">
+                    <Calendar size={20} />
+                  </div>
+                  <span className="text-white font-medium">日期</span>
+                </div>
+                <input 
+                  type="date" 
+                  value={newDate}
+                  onChange={e => setNewDate(e.target.value)}
+                  className="bg-transparent text-white text-right outline-none"
+                />
+              </div>
+              <div className="flex items-center justify-between p-3">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-purple-500/20 text-purple-500 p-2 rounded-xl">
+                    <Clock size={20} />
+                  </div>
+                  <span className="text-white font-medium">時間</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  {isTimeEnabled && (
+                    <input 
+                      type="time" 
+                      value={newTime}
+                      onChange={e => setNewTime(e.target.value)}
+                      className="bg-transparent text-white text-right outline-none"
+                    />
+                  )}
+                  <button 
+                    onClick={() => setIsTimeEnabled(!isTimeEnabled)}
+                    className={`w-12 h-6 rounded-full relative transition-colors ${isTimeEnabled ? 'bg-emerald-400' : 'bg-zinc-700'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${isTimeEnabled ? 'left-7' : 'left-1'}`}></div>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Location */}
+            <h3 className="text-white font-bold mb-3 px-1">地點</h3>
+            <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
+              <div className="flex items-center justify-between p-3">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-red-500/20 text-red-500 p-2 rounded-xl">
+                    <MapPin size={20} />
+                  </div>
+                  <input 
+                    type="text" 
+                    value={newLocation}
+                    onChange={e => setNewLocation(e.target.value)}
+                    placeholder="輸入地點..."
+                    className="bg-transparent outline-none text-white w-full placeholder-zinc-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Note */}
+            <h3 className="text-white font-bold mb-3 px-1">備註</h3>
+            <div className="bg-zinc-900 rounded-3xl p-4 mb-6">
+              <textarea 
+                value={newNote}
+                onChange={e => setNewNote(e.target.value)}
+                className="w-full bg-transparent outline-none text-white resize-none h-24 placeholder-zinc-600"
+                placeholder="輸入備註..."
+              ></textarea>
             </div>
           </div>
         </div>
+      )}
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
-                <tr>
-                  <th className="p-4">日期</th>
-                  <th className="p-4">類別</th>
-                  <th className="p-4">項目/備註</th>
-                  <th className="p-4">支付方式</th>
-                  <th className="p-4 text-right">金額</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filtered.map(tx => {
-                  const cat = categories.find(c => c.id === tx.category_id);
-                  const pay = paymentMethods.find(p => p.id === tx.payment_id);
-                  return (
-                    <tr key={tx.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-4">{tx.date}</td>
-                      <td className="p-4 flex items-center space-x-2">
-                        <span className="text-slate-400">{getCategoryIcon(cat?.icon || '')}</span>
-                        <span>{cat?.name}</span>
-                      </td>
-                      <td className="p-4 text-slate-800">{tx.note || '-'}</td>
-                      <td className="p-4">{pay?.name}</td>
-                      <td className="p-4 text-right font-semibold text-rose-500">-{formatCurrency(tx.amount)}</td>
-                    </tr>
-                  )
-                })}
-                {filtered.length === 0 && (
-                  <tr><td colSpan="5" className="p-8 text-center text-slate-400">找不到符合的紀錄</td></tr>
-                )}
-              </tbody>
-            </table>
+      {/* Transaction Detail Modal */}
+      {selectedTx && (
+        <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in slide-in-from-bottom-10">
+          <div className="flex justify-between items-center px-4 pt-8 pb-4">
+            <button onClick={() => setSelectedTx(null)} className="bg-zinc-800 text-zinc-300 p-2 rounded-full">
+              <X size={20} />
+            </button>
+            <h2 className="text-lg font-bold text-white">交易詳情</h2>
+            <div className="relative group">
+              <button className="bg-zinc-800 text-zinc-300 p-2 rounded-full">
+                <MoreHorizontal size={20} />
+              </button>
+              <div className="absolute right-0 top-full mt-2 w-32 bg-zinc-800 rounded-xl shadow-xl overflow-hidden hidden group-hover:block group-focus-within:block">
+                <button 
+                  onClick={() => handleEditTx(selectedTx)}
+                  className="w-full text-left px-4 py-3 text-white hover:bg-zinc-700 flex items-center"
+                >
+                  <Edit2 size={16} className="mr-2" /> 編輯
+                </button>
+                <button 
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="w-full text-left px-4 py-3 text-red-400 hover:bg-zinc-700 flex items-center"
+                >
+                  <Trash2 size={16} className="mr-2" /> 刪除
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-6 flex flex-col items-center">
+             <div className="text-5xl font-bold text-red-500 mb-2">
+               -{formatCurrency(selectedTx.amount, selectedTx.currency)}
+             </div>
+             <div className="text-zinc-400 mb-8">{selectedTx.note || '無備註'}</div>
+
+             <div className="w-full bg-zinc-900 rounded-3xl overflow-hidden">
+                <div className="flex items-center p-4 border-b border-zinc-800">
+                  <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl mr-4">
+                    <LayoutGrid size={20} />
+                  </div>
+                  <div>
+                    <p className="text-zinc-500 text-xs">分類</p>
+                    <p className="text-white font-medium">{categories.find(c => c.id === selectedTx.category_id)?.name}</p>
+                  </div>
+                </div>
+                <div className="flex items-center p-4 border-b border-zinc-800">
+                  <div className="bg-orange-500/20 text-orange-500 p-2 rounded-xl mr-4">
+                    <Calendar size={20} />
+                  </div>
+                  <div>
+                    <p className="text-zinc-500 text-xs">日期</p>
+                    <p className="text-white font-medium">{selectedTx.date} {selectedTx.time}</p>
+                  </div>
+                </div>
+                <div className="flex items-center p-4">
+                  <div className="bg-red-500/20 text-red-500 p-2 rounded-xl mr-4">
+                    <MapPin size={20} />
+                  </div>
+                  <div>
+                    <p className="text-zinc-500 text-xs">地點</p>
+                    <p className="text-white font-medium">{selectedTx.location || '未設定'}</p>
+                  </div>
+                </div>
+             </div>
           </div>
         </div>
-      </div>
-    );
-  };
+      )}
 
-  // 5. 系統設定 (Settings)
-  const SettingsPage = () => {
-    const [newCatName, setNewCatName] = useState('');
-    const [newPayName, setNewPayName] = useState('');
-
-    const handleAddCat = (e: React.FormEvent) => {
-      e.preventDefault();
-      if(!newCatName) return;
-      setCategories([...categories, { id: generateId(), name: newCatName, icon: 'Wallet', created_at: new Date().toISOString() }]);
-      setNewCatName('');
-    };
-
-    const handleAddPay = (e: React.FormEvent) => {
-      e.preventDefault();
-      if(!newPayName) return;
-      setPaymentMethods([...paymentMethods, { id: generateId(), name: newPayName, created_at: new Date().toISOString() }]);
-      setNewPayName('');
-    };
-
-    return (
-      <div className="space-y-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
-        
-        {/* 預算與資料管理 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><Wallet className="mr-2 w-5 h-5 text-indigo-500"/> 每月預算設定</h2>
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-6 animate-in fade-in">
+          <div className="bg-zinc-900 rounded-3xl w-full max-w-xs p-6 text-center">
+            <h3 className="text-white font-bold text-lg mb-2">確定要刪除這筆交易嗎？</h3>
+            <p className="text-zinc-400 text-sm mb-6">此動作無法復原。</p>
             <div className="flex space-x-3">
-              <input type="number" value={budget} onChange={e=>setBudget(Number(e.target.value))} className="flex-1 p-2 border border-slate-200 rounded-lg outline-none focus:border-indigo-500" />
+              <button 
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-3 rounded-xl bg-zinc-800 text-white font-medium"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleDeleteTx}
+                className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold"
+              >
+                刪除交易
+              </button>
             </div>
-            <p className="text-xs text-slate-400 mt-2">設定每月消費預警上限</p>
-          </div>
-
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-            <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center"><Download className="mr-2 w-5 h-5 text-indigo-500"/> 資料備份</h2>
-            <p className="text-sm text-slate-500 mb-4">將所有歷史交易紀錄匯出為 CSV 格式，方便在 Excel 或 Google 試算表檢視。</p>
-            <button onClick={() => exportToCSV(transactions, categories, paymentMethods, 'all_transactions_backup.csv')} className="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium py-2.5 rounded-lg transition-colors flex justify-center items-center">
-              <Download size={18} className="mr-2" /> 匯出所有歷史紀錄
-            </button>
           </div>
         </div>
+      )}
 
-        {/* 分類與支付管理 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* 類別管理 */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-             <h2 className="text-lg font-bold text-slate-800 mb-4">支出類別管理</h2>
-             <form onSubmit={handleAddCat} className="flex space-x-2 mb-4">
-               <input type="text" value={newCatName} onChange={e=>setNewCatName(e.target.value)} placeholder="新類別名稱..." className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500"/>
-               <button type="submit" className="bg-indigo-100 text-indigo-700 px-4 rounded-lg hover:bg-indigo-200 font-medium">新增</button>
-             </form>
-             <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-               {categories.map(cat => (
-                 <div key={cat.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg border border-slate-100">
-                   <div className="flex items-center space-x-3">
-                     <span className="text-slate-400">{getCategoryIcon(cat.icon)}</span>
-                     <span className="font-medium text-slate-700">{cat.name}</span>
+      {/* Currency Selection Modal */}
+      {isCurrencySelectOpen && (
+        <div className="fixed inset-0 bg-black z-[60] flex flex-col animate-in slide-in-from-bottom-full max-w-md mx-auto">
+          <div className="flex justify-between items-center px-4 pt-8 pb-4">
+            <button onClick={() => setIsCurrencySelectOpen(false)} className="bg-zinc-800 text-zinc-300 p-2 rounded-full">
+              <X size={20} />
+            </button>
+            <h2 className="text-lg font-bold text-white">選擇幣別</h2>
+            <div className="w-10"></div>
+          </div>
+          <div className="px-4 flex-1 overflow-y-auto">
+             <div className="bg-zinc-900 rounded-3xl overflow-hidden">
+               {CURRENCIES.map(curr => (
+                 <button
+                   key={curr.code}
+                   onClick={() => { setNewCurrency(curr.code); setIsCurrencySelectOpen(false); }}
+                   className="w-full flex items-center justify-between p-4 border-b border-zinc-800 last:border-0 hover:bg-zinc-800 transition-colors"
+                 >
+                   <div className="flex items-center">
+                     <span className="w-8 font-bold text-emerald-400">{curr.symbol}</span>
+                     <span className="text-white font-medium">{curr.code}</span>
+                     <span className="text-zinc-500 ml-2 text-sm">{curr.name}</span>
                    </div>
-                   <button onClick={() => setCategories(categories.filter(c => c.id !== cat.id))} className="text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
-                 </div>
-               ))}
-             </div>
-          </div>
-
-          {/* 支付方式管理 */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-             <h2 className="text-lg font-bold text-slate-800 mb-4">支付方式管理</h2>
-             <form onSubmit={handleAddPay} className="flex space-x-2 mb-4">
-               <input type="text" value={newPayName} onChange={e=>setNewPayName(e.target.value)} placeholder="新支付方式..." className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:border-indigo-500"/>
-               <button type="submit" className="bg-indigo-100 text-indigo-700 px-4 rounded-lg hover:bg-indigo-200 font-medium">新增</button>
-             </form>
-             <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-               {paymentMethods.map(pay => (
-                 <div key={pay.id} className="flex justify-between items-center p-3 bg-slate-50 rounded-lg border border-slate-100">
-                   <span className="font-medium text-slate-700 flex items-center"><CreditCard size={18} className="mr-3 text-slate-400" /> {pay.name}</span>
-                   <button onClick={() => setPaymentMethods(paymentMethods.filter(p => p.id !== pay.id))} className="text-slate-400 hover:text-red-500"><Trash2 size={16}/></button>
-                 </div>
+                   {newCurrency === curr.code && <Check size={18} className="text-emerald-400" />}
+                 </button>
                ))}
              </div>
           </div>
         </div>
-      </div>
-    );
-  };
+      )}
 
-
-  // --- 主版面配置 (Layout) ---
-  const NavItems = [
-    { id: 'dashboard', label: '首頁', icon: <LayoutDashboard size={22} /> },
-    { id: 'stats', label: '統計', icon: <ChartIcon size={22} /> },
-    { id: 'calendar', label: '日曆', icon: <CalendarIcon size={22} /> },
-    { id: 'search', label: '搜尋', icon: <Search size={22} /> },
-    { id: 'settings', label: '設定', icon: <Settings size={22} /> }
-  ];
-
-  return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 md:pb-0 md:pl-64 flex flex-col selection:bg-indigo-100">
-      
-      {/* 桌面版側邊欄 (Desktop Sidebar) */}
-      <aside className="hidden md:flex flex-col w-64 fixed inset-y-0 left-0 bg-white border-r border-slate-200 z-50">
-        <div className="p-6 flex items-center space-x-3 text-indigo-600">
-          <Wallet size={28} strokeWidth={2.5} />
-          <h1 className="text-2xl font-black tracking-tight text-slate-800">智能記帳</h1>
+      {/* Add Payment Method Modal */}
+      {isAddPaymentOpen && (
+        <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-zinc-900 rounded-3xl w-full max-w-xs p-6">
+            <h3 className="text-white font-bold text-lg mb-4">新增支付方式</h3>
+            <input 
+              type="text" 
+              value={newPaymentMethodName}
+              onChange={(e) => setNewPaymentMethodName(e.target.value)}
+              placeholder="名稱 (例如: 悠遊卡)"
+              className="w-full bg-zinc-800 text-white p-3 rounded-xl outline-none mb-4 placeholder-zinc-500"
+              autoFocus
+            />
+            <div className="flex space-x-3">
+              <button 
+                onClick={() => setIsAddPaymentOpen(false)}
+                className="flex-1 py-3 rounded-xl bg-zinc-800 text-zinc-400 font-medium"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleAddPaymentMethod}
+                className="flex-1 py-3 rounded-xl bg-emerald-400 text-black font-bold"
+              >
+                新增
+              </button>
+            </div>
+          </div>
         </div>
-        <nav className="flex-1 px-4 space-y-2 mt-4">
-          {NavItems.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all font-medium ${
-                activeTab === item.id 
-                ? 'bg-indigo-50 text-indigo-600' 
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-            >
-              {item.icon}
-              <span>{item.label}</span>
+      )}
+
+      {/* New Budget Modal */}
+      {isNewBudgetOpen && (
+        <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in slide-in-from-bottom-full duration-300 max-w-md mx-auto">
+          <div className="flex justify-between items-center px-4 pt-8 pb-4">
+            <button onClick={() => setIsNewBudgetOpen(false)} className="bg-zinc-800 text-zinc-300 p-2 rounded-full">
+              <X size={20} />
             </button>
-          ))}
-        </nav>
-        <div className="p-6 text-xs text-slate-400 text-center">
-          Mock Supabase Demo
+            <h2 className="text-lg font-bold text-white">新預算</h2>
+            <button onClick={handleSaveBudget} className="bg-zinc-800 text-zinc-400 px-4 py-1.5 rounded-full font-bold text-sm hover:bg-emerald-400 hover:text-black transition-colors">
+              儲存
+            </button>
+          </div>
+
+          <div className="px-4 flex-1 overflow-y-auto pb-8">
+             {/* Amount */}
+             <div className="bg-zinc-900 rounded-3xl p-4 mb-6 mt-4">
+               <div className="flex items-center text-3xl font-bold text-white">
+                 <span className="mr-1">$</span>
+                 <input 
+                   type="number" 
+                   value={newBudgetAmount} 
+                   onChange={e => setNewBudgetAmount(e.target.value)}
+                   placeholder="0"
+                   className="bg-transparent outline-none w-full placeholder-zinc-700"
+                   autoFocus
+                 />
+               </div>
+             </div>
+
+             {/* Allocation */}
+             <h3 className="text-white font-bold mb-3 px-1">分配</h3>
+             <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
+                <div className="flex items-center justify-between p-3">
+                   <div className="flex items-center space-x-3">
+                      <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl">
+                         <LayoutGrid size={20} />
+                      </div>
+                      <span className="text-white font-medium">分類</span>
+                   </div>
+                   <select 
+                      value={newBudgetCatId}
+                      onChange={e => setNewBudgetCatId(e.target.value)}
+                      className="bg-transparent text-right text-white outline-none appearance-none pr-6 relative z-10"
+                   >
+                      <option value="" disabled>選擇分類</option>
+                      {categories.map(c => <option key={c.id} value={c.id} className="bg-zinc-900">{c.name}</option>)}
+                   </select>
+                   <span className="text-red-400 text-sm font-bold absolute right-12 pointer-events-none">必填</span>
+                   <ChevronRight size={18} className="text-zinc-600 absolute right-8 pointer-events-none"/>
+                </div>
+             </div>
+
+             {/* Interval */}
+             <h3 className="text-white font-bold mb-3 px-1">間隔</h3>
+             <div className="bg-zinc-900 rounded-3xl p-2 mb-2">
+                <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+                   <div className="flex items-center space-x-3">
+                      <div className="bg-purple-500/20 text-purple-500 p-2 rounded-xl">
+                         <Repeat size={20} />
+                      </div>
+                      <span className="text-white font-medium">重複</span>
+                   </div>
+                   <div className="flex items-center text-zinc-400">
+                      <span className="mr-2">每月</span>
+                      <ChevronRight size={18} />
+                   </div>
+                </div>
+                <div className="flex items-center justify-between p-3">
+                   <div className="flex items-center space-x-3">
+                      <div className="bg-zinc-700/50 text-zinc-400 p-2 rounded-xl">
+                         <Flag size={20} />
+                      </div>
+                      <span className="text-white font-medium">結束</span>
+                   </div>
+                   <div className={`w-12 h-6 rounded-full relative bg-zinc-700`}>
+                      <div className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white`}></div>
+                   </div>
+                </div>
+             </div>
+             <p className="text-zinc-500 text-xs px-2 mb-6">該間隔決定預算重複的頻率，顯示的可用金額會根據所選時間段自動調整 <span className="text-emerald-400">了解更多</span></p>
+
+             {/* Note */}
+             <h3 className="text-white font-bold mb-3 px-1">備註</h3>
+             <div className="bg-zinc-900 rounded-3xl p-4 mb-6">
+               <textarea 
+                 value={newBudgetNote}
+                 onChange={e => setNewBudgetNote(e.target.value)}
+                 className="w-full bg-transparent outline-none text-white resize-none h-24 placeholder-zinc-600"
+                 placeholder=""
+               ></textarea>
+             </div>
+          </div>
         </div>
-      </aside>
+      )}
 
-      {/* 頂部標題列 (Mobile Header) */}
-      <header className="md:hidden bg-white border-b border-slate-200 p-4 sticky top-0 z-40 flex justify-center items-center">
-         <h1 className="text-lg font-bold text-slate-800 flex items-center"><Wallet className="mr-2 text-indigo-600" size={20}/>智能記帳</h1>
-      </header>
+      {/* Category Selection Modal */}
+      {isCatSelectOpen && (
+        <div className="fixed inset-0 bg-black z-[60] flex flex-col animate-in slide-in-from-right max-w-md mx-auto">
+          <div className="flex justify-between items-center px-4 pt-8 pb-4">
+            <button onClick={() => setIsCatSelectOpen(false)} className="bg-zinc-800 text-zinc-300 p-2 rounded-full">
+              <ChevronLeft size={20} />
+            </button>
+            <h2 className="text-lg font-bold text-white">分類</h2>
+            <div className="flex space-x-3 text-white">
+              <button 
+                onClick={() => setIsAddCatOpen(true)}
+                className="bg-zinc-800 p-2 rounded-full hover:bg-zinc-700"
+              >
+                <Plus size={20} />
+              </button>
+              <button 
+                onClick={() => setIsCatEditMode(!isCatEditMode)}
+                className={`p-2 rounded-full transition-colors ${isCatEditMode ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-white hover:bg-zinc-700'}`}
+              >
+                <MoreHorizontal size={20} />
+              </button>
+            </div>
+          </div>
 
-      {/* 內容區塊 (Main Content) */}
-      <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'stats' && <Statistics />}
-        {activeTab === 'calendar' && <CalendarView />}
-        {activeTab === 'search' && <AdvancedSearch />}
-        {activeTab === 'settings' && <SettingsPage />}
-      </main>
+          <div className="px-4 flex-1 overflow-y-auto">
+            <h3 className="text-white font-bold mb-3 px-1 mt-4">常用</h3>
+            <div className="bg-zinc-900 rounded-3xl p-2">
+              {categories.map((cat) => (
+                <div 
+                  key={cat.id}
+                  className="w-full flex items-center p-3 border-b border-zinc-800 last:border-0 rounded-xl relative group"
+                >
+                  <button 
+                    onClick={() => { 
+                      if (!isCatEditMode) {
+                        setNewCatId(cat.id); 
+                        setIsCatSelectOpen(false); 
+                      }
+                    }}
+                    className="flex-1 flex items-center"
+                  >
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat.bgColor} ${cat.textColor} mr-4`}>
+                      {IconMap[cat.icon] || <Wallet size={20} />}
+                    </div>
+                    <span className="text-white font-medium">{cat.name}</span>
+                  </button>
+                  
+                  {isCatEditMode && (
+                    <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-right-4">
+                      <button 
+                        onClick={() => handleDeleteCategory(cat.id)}
+                        className="bg-red-500/20 text-red-500 p-2 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* 手機版底部導覽 (Mobile Bottom Tab Bar) */}
-      <nav className="md:hidden fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 px-2 py-2 flex justify-between z-50 pb-safe">
-        {NavItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`flex flex-col items-center p-2 min-w-[64px] transition-colors ${
-              activeTab === item.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            {item.icon}
-            <span className="text-[10px] mt-1 font-medium">{item.label}</span>
-          </button>
-        ))}
-      </nav>
-
+      {/* Add Category Modal */}
+      {isAddCatOpen && (
+        <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-zinc-900 rounded-3xl w-full max-w-xs p-6">
+            <h3 className="text-white font-bold text-lg mb-4">新增分類</h3>
+            <input 
+              type="text" 
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              placeholder="分類名稱"
+              className="w-full bg-zinc-800 text-white p-3 rounded-xl outline-none mb-4 placeholder-zinc-500"
+              autoFocus
+            />
+            <div className="flex space-x-3">
+              <button 
+                onClick={() => setIsAddCatOpen(false)}
+                className="flex-1 py-3 rounded-xl bg-zinc-800 text-zinc-400 font-medium"
+              >
+                取消
+              </button>
+              <button 
+                onClick={handleAddCategory}
+                className="flex-1 py-3 rounded-xl bg-emerald-400 text-black font-bold"
+              >
+                新增
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
