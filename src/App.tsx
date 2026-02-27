@@ -10,6 +10,7 @@ import {
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
+import { supabase } from './lib/supabaseClient';
 
 // --- Mock Data & Constants ---
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -43,34 +44,12 @@ const INITIAL_PAYMENT_METHODS = [
   { id: 'pay-2', name: '刷卡', icon: 'CreditCard' },
 ];
 
-const generateMockTransactions = (categories: any[]) => {
-  const txs = [];
-  for (let m = 1; m <= 12; m++) {
-    const numTx = Math.floor(Math.random() * 5) + 1;
-    for (let i = 0; i < numTx; i++) {
-      const cat = categories[Math.floor(Math.random() * categories.length)];
-      txs.push({
-        id: generateId(),
-        amount: Math.floor(Math.random() * 5000) + 100,
-        category_id: cat.id,
-        date: `2026-${String(m).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}`,
-        note: `Mock ${cat.name}`,
-        currency: 'TWD',
-        location: '台北市',
-        time: '12:00',
-        payment_method: 'pay-1'
-      });
-    }
-  }
-  txs.push({ id: generateId(), amount: 86576, category_id: 'cat-1', date: '2026-01-15', note: '日本行', currency: 'TWD', location: '東京', time: '09:30', payment_method: 'pay-2' });
-  txs.push({ id: generateId(), amount: 39557, category_id: 'cat-2', date: '2026-02-10', note: '保養', currency: 'TWD', location: '修車廠', time: '14:00', payment_method: 'pay-2' });
-  return txs.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-};
+
 
 const formatCurrency = (amount: number, currencyCode: string = 'TWD') => {
   const currency = CURRENCIES.find(c => c.code === currencyCode) || CURRENCIES[0];
-  return new Intl.NumberFormat('en-US', { 
-    style: 'currency', 
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
     currency: currencyCode,
     minimumFractionDigits: 0,
     maximumFractionDigits: 0
@@ -92,10 +71,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [categories, setCategories] = useState(INITIAL_CATEGORIES);
   const [paymentMethods, setPaymentMethods] = useState(INITIAL_PAYMENT_METHODS);
-  const [transactions, setTransactions] = useState(() => generateMockTransactions(INITIAL_CATEGORIES));
-  const [budgets, setBudgets] = useState<{id: string, amount: number, category_id: string, repeat: string}[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [budgets, setBudgets] = useState<{ id: string, amount: number, category_id: string, repeat: string }[]>([]);
   const [currentYear, setCurrentYear] = useState(2026);
-  
+
   // UI States
   const [isYearSelectorOpen, setIsYearSelectorOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -151,31 +130,55 @@ export default function App() {
   const [isAddCatOpen, setIsAddCatOpen] = useState(false);
   const [newCatName, setNewCatName] = useState('');
 
-  const handleSaveTx = () => {
+  React.useEffect(() => {
+    fetchTransactions();
+  }, []);
+
+  const fetchTransactions = async () => {
+    const { data, error } = await supabase
+      .from('records')
+      .select('*')
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching transactions:', error);
+    } else if (data) {
+      setTransactions(data);
+    }
+  };
+
+  const handleSaveTx = async () => {
     if (!newAmount) return;
-    
+
     const txData = {
       amount: Number(newAmount),
-      category_id: newCatId,
+      category: newCatId,
       date: newDate,
-      note: newNote,
-      currency: newCurrency,
-      location: newLocation,
-      time: isTimeEnabled ? newTime : undefined,
-      payment_method: newPaymentMethod
+      description: newNote,
+      type: newType,
     };
 
     if (editingTxId) {
-      setTransactions(transactions.map(t => t.id === editingTxId ? { ...t, ...txData } : t).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-      setEditingTxId(null);
+      const { error } = await supabase
+        .from('records')
+        .update(txData)
+        .eq('id', editingTxId);
+
+      if (!error) {
+        fetchTransactions();
+        setEditingTxId(null);
+      }
     } else {
-      const tx = {
-        id: generateId(),
-        ...txData
-      };
-      setTransactions([tx, ...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      const { error } = await supabase
+        .from('records')
+        .insert([txData]);
+
+      if (!error) {
+        fetchTransactions();
+      }
     }
-    
+
     setIsNewTxOpen(false);
     resetForm();
   };
@@ -195,12 +198,13 @@ export default function App() {
   const handleEditTx = (tx: any) => {
     setEditingTxId(tx.id);
     setNewAmount(String(tx.amount));
-    setNewCatId(tx.category_id);
+    setNewCatId(tx.category || categories[0].id);
     setNewDate(tx.date);
-    setNewNote(tx.note || '');
-    setNewCurrency(tx.currency || 'TWD');
-    setNewLocation(tx.location || '');
-    setNewPaymentMethod(tx.payment_method || paymentMethods[0].id);
+    setNewType(tx.type);
+    setNewNote(tx.description || '');
+    setNewCurrency('TWD');
+    setNewLocation('');
+    setNewPaymentMethod(paymentMethods[0].id);
     if (tx.time) {
       setNewTime(tx.time);
       setIsTimeEnabled(true);
@@ -270,11 +274,18 @@ export default function App() {
     setSelectedBudget(null);
   };
 
-  const handleDeleteTx = () => {
+  const handleDeleteTx = async () => {
     if (selectedTx) {
-      setTransactions(transactions.filter(t => t.id !== selectedTx.id));
-      setSelectedTx(null);
-      setShowDeleteConfirm(false);
+      const { error } = await supabase
+        .from('records')
+        .delete()
+        .eq('id', selectedTx.id);
+
+      if (!error) {
+        fetchTransactions();
+        setSelectedTx(null);
+        setShowDeleteConfirm(false);
+      }
     }
   };
 
@@ -301,17 +312,18 @@ export default function App() {
   };
 
   // Overview Data
-  const yearTransactions = useMemo(() => 
-    transactions.filter(tx => tx.date.startsWith(String(currentYear))), 
-  [transactions, currentYear]);
+  const yearTransactions = useMemo(() =>
+    transactions.filter(tx => tx.date.startsWith(String(currentYear))),
+    [transactions, currentYear]);
 
   const totalExpense = useMemo(() => yearTransactions.reduce((sum, tx) => sum + tx.amount, 0), [yearTransactions]);
-  
+
   const categoryStats = useMemo(() => {
     const stats: Record<string, number> = {};
     yearTransactions.forEach(tx => {
-      if (categories.find(c => c.id === tx.category_id)) {
-        stats[tx.category_id] = (stats[tx.category_id] || 0) + tx.amount;
+      const catId = tx.category || categories[0].id; // Fallback for old/unmapped records
+      if (categories.find(c => c.id === catId)) {
+        stats[catId] = (stats[catId] || 0) + tx.amount;
       }
     });
     return categories.map(c => ({
@@ -328,7 +340,7 @@ export default function App() {
       const monthTxs = yearTransactions.filter(tx => tx.date.startsWith(monthPrefix));
       const monthObj: any = { name: `${i}月` };
       categories.forEach(c => {
-        monthObj[c.id] = monthTxs.filter(tx => tx.category_id === c.id).reduce((s, t) => s + t.amount, 0);
+        monthObj[c.id] = monthTxs.filter(tx => tx.category === c.id).reduce((s, t) => s + t.amount, 0);
       });
       data.push(monthObj);
     }
@@ -339,9 +351,9 @@ export default function App() {
   const filteredTransactions = useMemo(() => {
     if (!searchQuery) return [];
     return transactions.filter(tx => {
-      const cat = categories.find(c => c.id === tx.category_id);
+      const cat = categories.find(c => c.id === tx.category);
       return (
-        tx.note.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (tx.description && tx.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
         cat?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         String(tx.amount).includes(searchQuery)
       );
@@ -354,7 +366,7 @@ export default function App() {
       return yearTransactions.filter(tx => {
         const matchStartDate = !filterStartDate || tx.date >= filterStartDate;
         const matchEndDate = !filterEndDate || tx.date <= filterEndDate;
-        const matchCat = !filterCategory || tx.category_id === filterCategory;
+        const matchCat = !filterCategory || tx.category === filterCategory;
         return matchStartDate && matchEndDate && matchCat;
       });
     }, [yearTransactions, filterStartDate, filterEndDate, filterCategory]);
@@ -392,7 +404,7 @@ export default function App() {
       <div className="pb-24 animate-in fade-in duration-300 pt-20 px-4">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-white">交易</h1>
-          <button 
+          <button
             onClick={() => setIsFilterOpen(!isFilterOpen)}
             className={`p-2 rounded-full transition-colors ${isFilterOpen || filterStartDate || filterEndDate || filterCategory ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-zinc-400'}`}
           >
@@ -406,18 +418,18 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs text-zinc-500 mb-1 block">開始日期</label>
-                  <input 
-                    type="date" 
-                    value={filterStartDate} 
+                  <input
+                    type="date"
+                    value={filterStartDate}
                     onChange={e => setFilterStartDate(e.target.value)}
                     className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm"
                   />
                 </div>
                 <div>
                   <label className="text-xs text-zinc-500 mb-1 block">結束日期</label>
-                  <input 
-                    type="date" 
-                    value={filterEndDate} 
+                  <input
+                    type="date"
+                    value={filterEndDate}
                     onChange={e => setFilterEndDate(e.target.value)}
                     className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm"
                   />
@@ -425,8 +437,8 @@ export default function App() {
               </div>
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">分類</label>
-                <select 
-                  value={filterCategory} 
+                <select
+                  value={filterCategory}
                   onChange={e => setFilterCategory(e.target.value)}
                   className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm appearance-none"
                 >
@@ -436,7 +448,7 @@ export default function App() {
               </div>
             </div>
             {(filterStartDate || filterEndDate || filterCategory) && (
-              <button 
+              <button
                 onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategory(''); }}
                 className="mt-3 text-xs text-red-400 font-medium"
               >
@@ -448,12 +460,12 @@ export default function App() {
 
         {/* Expense Summary Card */}
         <div className="mb-8">
-           <div className="bg-zinc-900 rounded-3xl p-5 flex items-center justify-between">
-              <div>
-                <p className="text-zinc-400 text-sm mb-1">支出</p>
-                <p className="text-3xl font-bold text-red-500">-{formatCurrency(totalExpense)}</p>
-              </div>
-           </div>
+          <div className="bg-zinc-900 rounded-3xl p-5 flex items-center justify-between">
+            <div>
+              <p className="text-zinc-400 text-sm mb-1">支出</p>
+              <p className="text-3xl font-bold text-red-500">-{formatCurrency(totalExpense)}</p>
+            </div>
+          </div>
         </div>
 
         {/* Transaction List */}
@@ -469,11 +481,11 @@ export default function App() {
                 </h3>
                 <div className="bg-zinc-900 rounded-3xl overflow-hidden">
                   {dailyTxs.map((tx, idx) => {
-                    const cat = categories.find(c => c.id === tx.category_id);
+                    const cat = categories.find(c => c.id === tx.category);
                     const payMethod = paymentMethods.find(p => p.id === tx.payment_method);
                     return (
-                      <div 
-                        key={tx.id} 
+                      <div
+                        key={tx.id}
                         onClick={() => setSelectedTx(tx)}
                         className={`flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-800/50 transition-colors ${idx !== dailyTxs.length - 1 ? 'border-b border-zinc-800' : ''}`}
                       >
@@ -482,16 +494,16 @@ export default function App() {
                             {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
                           </div>
                           <div>
-                            <p className="text-white font-medium text-base">{tx.note || cat?.name}</p>
+                            <p className="text-white font-medium text-base">{tx.description || cat?.name}</p>
                             <div className="flex items-center text-zinc-500 text-xs mt-0.5">
-                               <span>{cat?.name}</span>
-                               {tx.time && <span className="mx-1">• {tx.time}</span>}
-                               {payMethod && <span className="mx-1">• {payMethod.name}</span>}
+                              <span>{cat?.name}</span>
+                              {tx.time && <span className="mx-1">• {tx.time}</span>}
+                              {payMethod && <span className="mx-1">• {payMethod.name}</span>}
                             </div>
                           </div>
                         </div>
                         <div className="text-right">
-                           <p className="text-red-500 font-bold">-{formatCurrency(tx.amount, tx.currency)}</p>
+                          <p className="text-red-500 font-bold">-{formatCurrency(tx.amount, tx.currency)}</p>
                         </div>
                       </div>
                     );
@@ -499,13 +511,13 @@ export default function App() {
                 </div>
                 {/* Daily Total */}
                 <div className="mt-2 text-right px-2">
-                   <span className="text-zinc-500 text-sm mr-2">總計:</span>
-                   <span className="text-red-500 font-bold">-{formatCurrency(dailyTotal)}</span>
+                  <span className="text-zinc-500 text-sm mr-2">總計:</span>
+                  <span className="text-red-500 font-bold">-{formatCurrency(dailyTotal)}</span>
                 </div>
               </div>
             );
           })}
-          
+
           {sortedDates.length === 0 && (
             <div className="text-center text-zinc-500 py-10">
               沒有符合條件的交易紀錄
@@ -551,47 +563,47 @@ export default function App() {
 
           <div className={`transition-opacity duration-300 ${isPending ? 'opacity-50' : 'opacity-100'}`}>
             {chartType === 'pie' ? (
-            <div className="relative h-64">
-              <div className="absolute top-0 left-0">
-                <p className="text-zinc-400 text-xs">交易</p>
-                <p className="text-white font-medium">{yearTransactions.length}</p>
+              <div className="relative h-64">
+                <div className="absolute top-0 left-0">
+                  <p className="text-zinc-400 text-xs">交易</p>
+                  <p className="text-white font-medium">{yearTransactions.length}</p>
+                </div>
+                <div className="absolute top-0 right-0 text-right">
+                  <p className="text-zinc-400 text-xs">類別</p>
+                  <p className="text-white font-medium">{categoryStats.length}</p>
+                </div>
+                <div className="absolute bottom-0 left-0">
+                  <p className="text-white font-medium">{formatCurrency(totalExpense / (yearTransactions.length || 1))}</p>
+                  <p className="text-zinc-400 text-xs">平均每筆交易</p>
+                </div>
+                <div className="absolute bottom-0 right-0 text-right">
+                  <p className="text-white font-medium">{formatCurrency(totalExpense / 365)}</p>
+                  <p className="text-zinc-400 text-xs">平均每日值</p>
+                </div>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={categoryStats} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="value" stroke="none">
+                      {categoryStats.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '8px', color: '#fff' }} itemStyle={{ color: '#fff' }} formatter={(value: number) => formatCurrency(value)} />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
-              <div className="absolute top-0 right-0 text-right">
-                <p className="text-zinc-400 text-xs">類別</p>
-                <p className="text-white font-medium">{categoryStats.length}</p>
+            ) : (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} tickFormatter={(val) => val === 0 ? '0' : val.toLocaleString()} />
+                    <Tooltip cursor={{ fill: '#27272a' }} contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '8px', color: '#fff' }} />
+                    {categories.map(c => (
+                      <Bar key={c.id} dataKey={c.id} stackId="a" fill={c.color} radius={[0, 0, 0, 0]} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
-              <div className="absolute bottom-0 left-0">
-                <p className="text-white font-medium">{formatCurrency(totalExpense / (yearTransactions.length || 1))}</p>
-                <p className="text-zinc-400 text-xs">平均每筆交易</p>
-              </div>
-              <div className="absolute bottom-0 right-0 text-right">
-                <p className="text-white font-medium">{formatCurrency(totalExpense / 365)}</p>
-                <p className="text-zinc-400 text-xs">平均每日值</p>
-              </div>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={categoryStats} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="value" stroke="none">
-                    {categoryStats.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                  </Pie>
-                  <Tooltip contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '8px', color: '#fff' }} itemStyle={{ color: '#fff' }} formatter={(value: number) => formatCurrency(value)} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#a1a1aa', fontSize: 12 }} tickFormatter={(val) => val === 0 ? '0' : val.toLocaleString()} />
-                  <Tooltip cursor={{ fill: '#27272a' }} contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '8px', color: '#fff' }} />
-                  {categories.map(c => (
-                    <Bar key={c.id} dataKey={c.id} stackId="a" fill={c.color} radius={[0, 0, 0, 0]} />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
+            )}
           </div>
         </div>
 
@@ -603,8 +615,8 @@ export default function App() {
           </div>
           <div className="bg-zinc-900 rounded-3xl p-2">
             {categoryStats.map((cat, idx) => (
-              <div 
-                key={cat.id} 
+              <div
+                key={cat.id}
                 onClick={() => {
                   setFilterCategory(cat.id);
                   setActiveTab('transactions');
@@ -635,7 +647,7 @@ export default function App() {
 
   const BudgetView = () => {
     const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
-    
+
     // Calculate remaining based on category-specific spending and budget end date
     const remaining = useMemo(() => {
       if (budgets.length === 0) return 0;
@@ -643,7 +655,7 @@ export default function App() {
       budgets.forEach(budget => {
         const spent = yearTransactions
           .filter(tx => {
-            if (tx.category_id !== budget.category_id) return false;
+            if (tx.category !== budget.category_id) return false;
             if (budget.end && budget.endDate) {
               return new Date(tx.date) <= new Date(budget.endDate);
             }
@@ -663,28 +675,28 @@ export default function App() {
           <h1 className="text-3xl font-bold text-white">預算</h1>
           <div className="flex space-x-3">
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setIsBudgetHeaderMenuOpen(!isBudgetHeaderMenuOpen)}
                 className="bg-zinc-800 p-2 rounded-full text-white hover:bg-zinc-700 transition-colors"
               >
-                 <MoreHorizontal size={24} />
+                <MoreHorizontal size={24} />
               </button>
               {isBudgetHeaderMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsBudgetHeaderMenuOpen(false)}></div>
                   <div className="absolute right-0 top-full mt-2 w-48 bg-zinc-800 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
-                    <button 
+                    <button
                       onClick={() => { setIsResetDayOpen(true); setIsBudgetHeaderMenuOpen(false); }}
                       className="w-full text-left px-4 py-3 text-white hover:bg-zinc-700 flex items-center text-sm"
                     >
                       <Calendar size={16} className="mr-2" /> 重置日設定
                     </button>
-                    <button 
+                    <button
                       className="w-full text-left px-4 py-3 text-white hover:bg-zinc-700 flex items-center text-sm"
                     >
                       <Edit2 size={16} className="mr-2" /> 批次編輯
                     </button>
-                    <button 
+                    <button
                       className="w-full text-left px-4 py-3 text-red-400 hover:bg-zinc-700 flex items-center text-sm"
                     >
                       <Trash2 size={16} className="mr-2" /> 全部刪除
@@ -694,88 +706,88 @@ export default function App() {
               )}
             </div>
             <button onClick={() => { setEditingBudgetId(null); setIsNewBudgetOpen(true); }} className="bg-zinc-800 p-2 rounded-full text-white hover:bg-zinc-700 transition-colors">
-               <Plus size={24} />
+              <Plus size={24} />
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-zinc-900 p-4 rounded-3xl">
-             <div className="flex justify-between items-start mb-2">
-               <span className="text-zinc-400 text-sm">計劃中</span>
-               <div className="bg-zinc-800 p-1 rounded-full text-zinc-400"><Minus size={16}/></div>
-             </div>
-             <p className="text-emerald-400 text-xl font-bold">{formatCurrency(totalBudget)}</p>
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-zinc-400 text-sm">計劃中</span>
+              <div className="bg-zinc-800 p-1 rounded-full text-zinc-400"><Minus size={16} /></div>
+            </div>
+            <p className="text-emerald-400 text-xl font-bold">{formatCurrency(totalBudget)}</p>
           </div>
           <div className="bg-zinc-900 p-4 rounded-3xl">
-             <div className="flex justify-between items-start mb-2">
-               <span className="text-zinc-400 text-sm">剩餘</span>
-               <div className="bg-zinc-800 p-1 rounded-full text-zinc-400"><Check size={16}/></div>
-             </div>
-             <p className={`${remaining < 0 ? 'text-red-400' : 'text-emerald-400'} text-xl font-bold`}>{formatCurrency(remaining)}</p>
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-zinc-400 text-sm">剩餘</span>
+              <div className="bg-zinc-800 p-1 rounded-full text-zinc-400"><Check size={16} /></div>
+            </div>
+            <p className={`${remaining < 0 ? 'text-red-400' : 'text-emerald-400'} text-xl font-bold`}>{formatCurrency(remaining)}</p>
           </div>
         </div>
 
         <div className={`bg-zinc-900 rounded-3xl p-4 mb-8 flex items-center space-x-2 ${isOverBudget ? 'border border-red-500/30' : ''}`}>
-           <span className="text-2xl">{isOverBudget ? '⚠️' : '🎉'}</span>
-           <span className={`${isOverBudget ? 'text-red-400' : 'text-white'} font-medium`}>
-             {isOverBudget ? '您已超出預算！' : '您在預算內！'}
-           </span>
+          <span className="text-2xl">{isOverBudget ? '⚠️' : '🎉'}</span>
+          <span className={`${isOverBudget ? 'text-red-400' : 'text-white'} font-medium`}>
+            {isOverBudget ? '您已超出預算！' : '您在預算內！'}
+          </span>
         </div>
 
         <h2 className="text-white font-bold text-lg mb-4">每月</h2>
         <div className="space-y-4">
-           {budgets.map(budget => {
-             const cat = categories.find(c => c.id === budget.category_id);
-             const spent = yearTransactions
-               .filter(tx => {
-                 if (tx.category_id !== budget.category_id) return false;
-                 if (budget.end && budget.endDate) {
-                   return new Date(tx.date) <= new Date(budget.endDate);
-                 }
-                 return true;
-               })
-               .reduce((sum, tx) => sum + tx.amount, 0);
-             const percent = Math.min((spent / budget.amount) * 100, 100);
+          {budgets.map(budget => {
+            const cat = categories.find(c => c.id === budget.category_id);
+            const spent = yearTransactions
+              .filter(tx => {
+                if (tx.category !== budget.category_id) return false;
+                if (budget.end && budget.endDate) {
+                  return new Date(tx.date) <= new Date(budget.endDate);
+                }
+                return true;
+              })
+              .reduce((sum, tx) => sum + tx.amount, 0);
+            const percent = Math.min((spent / budget.amount) * 100, 100);
 
-             return (
-               <div 
-                 key={budget.id} 
-                 onClick={() => setSelectedBudget(budget)}
-                 className="bg-zinc-900 rounded-3xl p-4 cursor-pointer hover:bg-zinc-800 transition-colors"
-               >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex items-center space-x-3">
-                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat?.bgColor || 'bg-zinc-800'} ${cat?.textColor || 'text-zinc-400'}`}>
-                          {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
-                       </div>
-                       <div>
-                         <p className="text-white font-medium">{cat?.name || '未分類'}</p>
-                         <p className="text-zinc-400 text-xs">剩餘</p>
-                       </div>
+            return (
+              <div
+                key={budget.id}
+                onClick={() => setSelectedBudget(budget)}
+                className="bg-zinc-900 rounded-3xl p-4 cursor-pointer hover:bg-zinc-800 transition-colors"
+              >
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat?.bgColor || 'bg-zinc-800'} ${cat?.textColor || 'text-zinc-400'}`}>
+                      {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
                     </div>
-                    <div className="text-right">
-                       <p className="text-zinc-500 text-xs mb-1">
-                         1月{String(resetDay).padStart(2, '0')}日 - {budget.end && budget.endDate ? new Date(budget.endDate).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) : '12月31日'}
-                       </p>
-                       <div className={`flex items-center justify-end font-bold ${budget.amount - spent < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                         {formatCurrency(budget.amount - spent)} <ChevronRight size={16} className="ml-1 text-zinc-600"/>
-                       </div>
+                    <div>
+                      <p className="text-white font-medium">{cat?.name || '未分類'}</p>
+                      <p className="text-zinc-400 text-xs">剩餘</p>
                     </div>
                   </div>
-                  <div className="w-full bg-zinc-800 rounded-full h-2 mb-2">
-                    <div className="h-2 rounded-full" style={{ width: `${percent}%`, backgroundColor: budget.amount - spent < 0 ? '#f87171' : '#34d399' }}></div>
+                  <div className="text-right">
+                    <p className="text-zinc-500 text-xs mb-1">
+                      1月{String(resetDay).padStart(2, '0')}日 - {budget.end && budget.endDate ? new Date(budget.endDate).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) : '12月31日'}
+                    </p>
+                    <div className={`flex items-center justify-end font-bold ${budget.amount - spent < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {formatCurrency(budget.amount - spent)} <ChevronRight size={16} className="ml-1 text-zinc-600" />
+                    </div>
                   </div>
-                  <p className="text-emerald-400 text-sm font-bold">總計: {formatCurrency(budget.amount)}</p>
-               </div>
-             );
-           })}
-           {budgets.length === 0 && (
-             <div className="text-center text-zinc-500 py-12">
-               <Wallet size={48} className="mx-auto mb-4 opacity-20" />
-               <p>尚無預算設定</p>
-             </div>
-           )}
+                </div>
+                <div className="w-full bg-zinc-800 rounded-full h-2 mb-2">
+                  <div className="h-2 rounded-full" style={{ width: `${percent}%`, backgroundColor: budget.amount - spent < 0 ? '#f87171' : '#34d399' }}></div>
+                </div>
+                <p className="text-emerald-400 text-sm font-bold">總計: {formatCurrency(budget.amount)}</p>
+              </div>
+            );
+          })}
+          {budgets.length === 0 && (
+            <div className="text-center text-zinc-500 py-12">
+              <Wallet size={48} className="mx-auto mb-4 opacity-20" />
+              <p>尚無預算設定</p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -783,17 +795,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-black font-sans text-zinc-100 selection:bg-emerald-500/30">
-      
+
       {/* Global Header (Floating) */}
       <div className="fixed top-0 left-0 right-0 z-40 px-4 pt-8 pb-2 bg-gradient-to-b from-black via-black/80 to-transparent pointer-events-none">
         <div className="flex justify-between items-center pointer-events-auto max-w-md mx-auto">
-          <button 
+          <button
             onClick={() => setIsYearSelectorOpen(true)}
             className="bg-zinc-800 text-zinc-300 px-4 py-1.5 rounded-full text-sm font-medium flex items-center hover:bg-zinc-700 active:scale-95 transition-all"
           >
             年 {currentYear} <ChevronRight size={14} className="ml-1 rotate-90" />
           </button>
-          <button 
+          <button
             onClick={() => setIsSearchOpen(true)}
             className="bg-zinc-800 text-zinc-300 p-2 rounded-full hover:bg-zinc-700 active:scale-95 transition-all"
           >
@@ -809,7 +821,7 @@ export default function App() {
         {activeTab === 'budget' && <BudgetView />}
 
         {/* FAB */}
-        <button 
+        <button
           onClick={() => setIsNewTxOpen(true)}
           className="fixed bottom-24 right-6 w-14 h-14 bg-emerald-400 rounded-full flex items-center justify-center text-black shadow-lg shadow-emerald-400/20 z-40 hover:scale-105 transition-transform"
         >
@@ -828,9 +840,8 @@ export default function App() {
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`flex flex-col items-center justify-center w-16 h-12 rounded-2xl transition-all ${
-                  isActive ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500'
-                }`}
+                className={`flex flex-col items-center justify-center w-16 h-12 rounded-2xl transition-all ${isActive ? 'bg-zinc-800 text-emerald-400' : 'text-zinc-500'
+                  }`}
               >
                 {item.icon}
                 <span className="text-[10px] mt-1 font-medium">{item.label}</span>
@@ -870,7 +881,7 @@ export default function App() {
           <div className="flex items-center px-4 pt-8 pb-4 border-b border-zinc-900">
             <div className="flex-1 bg-zinc-900 rounded-xl flex items-center px-3 py-2">
               <Search size={18} className="text-zinc-500 mr-2" />
-              <input 
+              <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -888,7 +899,7 @@ export default function App() {
               <div className="text-center text-zinc-500 mt-10">找不到相關結果</div>
             )}
             {filteredTransactions.map(tx => {
-              const cat = categories.find(c => c.id === tx.category_id);
+              const cat = categories.find(c => c.id === tx.category);
               return (
                 <div key={tx.id} className="flex items-center justify-between p-4 bg-zinc-900 rounded-2xl mb-3">
                   <div className="flex items-center space-x-3">
@@ -896,11 +907,11 @@ export default function App() {
                       {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
                     </div>
                     <div>
-                      <p className="text-white font-medium">{tx.note || cat?.name}</p>
+                      <p className="text-white font-medium">{tx.description || cat?.name}</p>
                       <p className="text-xs text-zinc-500">{tx.date}</p>
                     </div>
                   </div>
-                  <span className="text-red-400 font-medium">-{formatCurrency(tx.amount, tx.currency)}</span>
+                  <span className="text-red-400 font-medium">-{formatCurrency(tx.amount, tx.currency || 'TWD')}</span>
                 </div>
               );
             })}
@@ -927,9 +938,9 @@ export default function App() {
               <div className="flex items-center text-5xl font-bold text-white">
                 <span className="mr-1">-</span>
                 <span>{CURRENCIES.find(c => c.code === newCurrency)?.symbol}</span>
-                <input 
-                  type="number" 
-                  value={newAmount} 
+                <input
+                  type="number"
+                  value={newAmount}
                   onChange={e => setNewAmount(e.target.value)}
                   placeholder="0"
                   className="bg-transparent outline-none w-full placeholder-zinc-700 ml-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -937,25 +948,25 @@ export default function App() {
                 />
               </div>
               <div className="flex items-center space-x-2">
-                <button 
+                <button
                   onClick={() => setIsCurrencySelectOpen(true)}
                   className="bg-zinc-800 text-emerald-400 px-3 py-1.5 rounded-full text-sm font-bold flex items-center hover:bg-zinc-700"
                 >
-                  {newCurrency} <ChevronRight size={16} className="ml-1"/>
+                  {newCurrency} <ChevronRight size={16} className="ml-1" />
                 </button>
               </div>
             </div>
 
             {/* Type Toggle */}
             <div className="bg-zinc-900 rounded-full p-1 flex mb-8">
-              <button 
-                onClick={() => setNewType('expense')} 
+              <button
+                onClick={() => setNewType('expense')}
                 className={`flex-1 py-2 rounded-full text-sm font-medium transition-colors ${newType === 'expense' ? 'bg-zinc-700 text-white' : 'text-zinc-400'}`}
               >
                 支出
               </button>
-              <button 
-                onClick={() => setNewType('transfer')} 
+              <button
+                onClick={() => setNewType('transfer')}
                 className={`flex-1 py-2 rounded-full text-sm font-medium transition-colors ${newType === 'transfer' ? 'bg-zinc-700 text-white' : 'text-zinc-400'}`}
               >
                 轉帳
@@ -965,7 +976,7 @@ export default function App() {
             {/* Category */}
             <h3 className="text-white font-bold mb-3 px-1">分類</h3>
             <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
-              <button 
+              <button
                 onClick={() => setIsCatSelectOpen(true)}
                 className="w-full flex items-center justify-between p-3"
               >
@@ -985,30 +996,30 @@ export default function App() {
             {/* Payment Method */}
             <h3 className="text-white font-bold mb-3 px-1">支付方式</h3>
             <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
-               <div className="relative">
-                 <select 
-                   value={newPaymentMethod}
-                   onChange={(e) => {
-                     if (e.target.value === 'add_new') {
-                       setIsAddPaymentOpen(true);
-                     } else {
-                       setNewPaymentMethod(e.target.value);
-                     }
-                   }}
-                   className="w-full bg-transparent text-white p-3 outline-none appearance-none relative z-10"
-                 >
-                   {paymentMethods.map(pm => (
-                     <option key={pm.id} value={pm.id} className="bg-zinc-900 text-white">{pm.name}</option>
-                   ))}
-                   <option value="add_new" className="bg-zinc-900 text-emerald-400 font-bold">+ 新增支付方式</option>
-                 </select>
-                 <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-zinc-400 z-0">
-                   <ChevronRight size={18} className="rotate-90" />
-                 </div>
-                 <div className="absolute left-12 top-1/2 transform -translate-y-1/2 text-white font-medium pointer-events-none">
-                    {/* Visual Label Overlay if needed, but select text works */}
-                 </div>
-               </div>
+              <div className="relative">
+                <select
+                  value={newPaymentMethod}
+                  onChange={(e) => {
+                    if (e.target.value === 'add_new') {
+                      setIsAddPaymentOpen(true);
+                    } else {
+                      setNewPaymentMethod(e.target.value);
+                    }
+                  }}
+                  className="w-full bg-transparent text-white p-3 outline-none appearance-none relative z-10"
+                >
+                  {paymentMethods.map(pm => (
+                    <option key={pm.id} value={pm.id} className="bg-zinc-900 text-white">{pm.name}</option>
+                  ))}
+                  <option value="add_new" className="bg-zinc-900 text-emerald-400 font-bold">+ 新增支付方式</option>
+                </select>
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-zinc-400 z-0">
+                  <ChevronRight size={18} className="rotate-90" />
+                </div>
+                <div className="absolute left-12 top-1/2 transform -translate-y-1/2 text-white font-medium pointer-events-none">
+                  {/* Visual Label Overlay if needed, but select text works */}
+                </div>
+              </div>
             </div>
 
             {/* Date & Time */}
@@ -1021,8 +1032,8 @@ export default function App() {
                   </div>
                   <span className="text-white font-medium">日期</span>
                 </div>
-                <input 
-                  type="date" 
+                <input
+                  type="date"
                   value={newDate}
                   onChange={e => setNewDate(e.target.value)}
                   className="bg-transparent text-white text-right outline-none"
@@ -1037,14 +1048,14 @@ export default function App() {
                 </div>
                 <div className="flex items-center space-x-3">
                   {isTimeEnabled && (
-                    <input 
-                      type="time" 
+                    <input
+                      type="time"
                       value={newTime}
                       onChange={e => setNewTime(e.target.value)}
                       className="bg-transparent text-white text-right outline-none"
                     />
                   )}
-                  <button 
+                  <button
                     onClick={() => setIsTimeEnabled(!isTimeEnabled)}
                     className={`w-12 h-6 rounded-full relative transition-colors ${isTimeEnabled ? 'bg-emerald-400' : 'bg-zinc-700'}`}
                   >
@@ -1062,8 +1073,8 @@ export default function App() {
                   <div className="bg-red-500/20 text-red-500 p-2 rounded-xl">
                     <MapPin size={20} />
                   </div>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={newLocation}
                     onChange={e => setNewLocation(e.target.value)}
                     placeholder="輸入地點..."
@@ -1076,7 +1087,7 @@ export default function App() {
             {/* Note */}
             <h3 className="text-white font-bold mb-3 px-1">備註</h3>
             <div className="bg-zinc-900 rounded-3xl p-4 mb-6">
-              <textarea 
+              <textarea
                 value={newNote}
                 onChange={e => setNewNote(e.target.value)}
                 className="w-full bg-transparent outline-none text-white resize-none h-24 placeholder-zinc-600"
@@ -1096,7 +1107,7 @@ export default function App() {
             </button>
             <h2 className="text-lg font-bold text-white">交易詳情</h2>
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setIsTxMenuOpen(!isTxMenuOpen)}
                 className="bg-zinc-800 text-zinc-300 p-2 rounded-full"
               >
@@ -1106,13 +1117,13 @@ export default function App() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsTxMenuOpen(false)}></div>
                   <div className="absolute right-0 top-full mt-2 w-32 bg-zinc-800 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
-                    <button 
+                    <button
                       onClick={() => { handleEditTx(selectedTx); setIsTxMenuOpen(false); }}
                       className="w-full text-left px-4 py-3 text-white hover:bg-zinc-700 flex items-center"
                     >
                       <Edit2 size={16} className="mr-2" /> 編輯
                     </button>
-                    <button 
+                    <button
                       onClick={() => { setShowDeleteConfirm(true); setIsTxMenuOpen(false); }}
                       className="w-full text-left px-4 py-3 text-red-400 hover:bg-zinc-700 flex items-center"
                     >
@@ -1125,40 +1136,40 @@ export default function App() {
           </div>
 
           <div className="p-6 flex flex-col items-center">
-             <div className="text-5xl font-bold text-red-500 mb-2">
-               -{formatCurrency(selectedTx.amount, selectedTx.currency)}
-             </div>
-             <div className="text-zinc-400 mb-8">{selectedTx.note || '無備註'}</div>
+            <div className="text-5xl font-bold text-red-500 mb-2">
+              -{formatCurrency(selectedTx.amount, selectedTx.currency)}
+            </div>
+            <div className="text-zinc-400 mb-8">{selectedTx.description || '無備註'}</div>
 
-             <div className="w-full bg-zinc-900 rounded-3xl overflow-hidden">
-                <div className="flex items-center p-4 border-b border-zinc-800">
-                  <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl mr-4">
-                    <LayoutGrid size={20} />
-                  </div>
-                  <div>
-                    <p className="text-zinc-500 text-xs">分類</p>
-                    <p className="text-white font-medium">{categories.find(c => c.id === selectedTx.category_id)?.name}</p>
-                  </div>
+            <div className="w-full bg-zinc-900 rounded-3xl overflow-hidden">
+              <div className="flex items-center p-4 border-b border-zinc-800">
+                <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl mr-4">
+                  <LayoutGrid size={20} />
                 </div>
-                <div className="flex items-center p-4 border-b border-zinc-800">
-                  <div className="bg-orange-500/20 text-orange-500 p-2 rounded-xl mr-4">
-                    <Calendar size={20} />
-                  </div>
-                  <div>
-                    <p className="text-zinc-500 text-xs">日期</p>
-                    <p className="text-white font-medium">{selectedTx.date} {selectedTx.time}</p>
-                  </div>
+                <div>
+                  <p className="text-zinc-500 text-xs">分類</p>
+                  <p className="text-white font-medium">{categories.find(c => c.id === selectedTx.category)?.name}</p>
                 </div>
-                <div className="flex items-center p-4">
-                  <div className="bg-red-500/20 text-red-500 p-2 rounded-xl mr-4">
-                    <MapPin size={20} />
-                  </div>
-                  <div>
-                    <p className="text-zinc-500 text-xs">地點</p>
-                    <p className="text-white font-medium">{selectedTx.location || '未設定'}</p>
-                  </div>
+              </div>
+              <div className="flex items-center p-4 border-b border-zinc-800">
+                <div className="bg-orange-500/20 text-orange-500 p-2 rounded-xl mr-4">
+                  <Calendar size={20} />
                 </div>
-             </div>
+                <div>
+                  <p className="text-zinc-500 text-xs">日期</p>
+                  <p className="text-white font-medium">{selectedTx.date} {selectedTx.time}</p>
+                </div>
+              </div>
+              <div className="flex items-center p-4">
+                <div className="bg-red-500/20 text-red-500 p-2 rounded-xl mr-4">
+                  <MapPin size={20} />
+                </div>
+                <div>
+                  <p className="text-zinc-500 text-xs">地點</p>
+                  <p className="text-white font-medium">{selectedTx.location || '未設定'}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1170,13 +1181,13 @@ export default function App() {
             <h3 className="text-white font-bold text-lg mb-2">確定要刪除這筆交易嗎？</h3>
             <p className="text-zinc-400 text-sm mb-6">此動作無法復原。</p>
             <div className="flex space-x-3">
-              <button 
+              <button
                 onClick={() => setShowDeleteConfirm(false)}
                 className="flex-1 py-3 rounded-xl bg-zinc-800 text-white font-medium"
               >
                 取消
               </button>
-              <button 
+              <button
                 onClick={handleDeleteTx}
                 className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold"
               >
@@ -1198,22 +1209,22 @@ export default function App() {
             <div className="w-10"></div>
           </div>
           <div className="px-4 flex-1 overflow-y-auto">
-             <div className="bg-zinc-900 rounded-3xl overflow-hidden">
-               {CURRENCIES.map(curr => (
-                 <button
-                   key={curr.code}
-                   onClick={() => { setNewCurrency(curr.code); setIsCurrencySelectOpen(false); }}
-                   className="w-full flex items-center justify-between p-4 border-b border-zinc-800 last:border-0 hover:bg-zinc-800 transition-colors"
-                 >
-                   <div className="flex items-center">
-                     <span className="w-8 font-bold text-emerald-400">{curr.symbol}</span>
-                     <span className="text-white font-medium">{curr.code}</span>
-                     <span className="text-zinc-500 ml-2 text-sm">{curr.name}</span>
-                   </div>
-                   {newCurrency === curr.code && <Check size={18} className="text-emerald-400" />}
-                 </button>
-               ))}
-             </div>
+            <div className="bg-zinc-900 rounded-3xl overflow-hidden">
+              {CURRENCIES.map(curr => (
+                <button
+                  key={curr.code}
+                  onClick={() => { setNewCurrency(curr.code); setIsCurrencySelectOpen(false); }}
+                  className="w-full flex items-center justify-between p-4 border-b border-zinc-800 last:border-0 hover:bg-zinc-800 transition-colors"
+                >
+                  <div className="flex items-center">
+                    <span className="w-8 font-bold text-emerald-400">{curr.symbol}</span>
+                    <span className="text-white font-medium">{curr.code}</span>
+                    <span className="text-zinc-500 ml-2 text-sm">{curr.name}</span>
+                  </div>
+                  {newCurrency === curr.code && <Check size={18} className="text-emerald-400" />}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -1223,8 +1234,8 @@ export default function App() {
         <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-zinc-900 rounded-3xl w-full max-w-xs p-6">
             <h3 className="text-white font-bold text-lg mb-4">新增支付方式</h3>
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={newPaymentMethodName}
               onChange={(e) => setNewPaymentMethodName(e.target.value)}
               placeholder="名稱 (例如: 悠遊卡)"
@@ -1232,13 +1243,13 @@ export default function App() {
               autoFocus
             />
             <div className="flex space-x-3">
-              <button 
+              <button
                 onClick={() => setIsAddPaymentOpen(false)}
                 className="flex-1 py-3 rounded-xl bg-zinc-800 text-zinc-400 font-medium"
               >
                 取消
               </button>
-              <button 
+              <button
                 onClick={handleAddPaymentMethod}
                 className="flex-1 py-3 rounded-xl bg-emerald-400 text-black font-bold"
               >
@@ -1263,106 +1274,106 @@ export default function App() {
           </div>
 
           <div className="px-4 flex-1 overflow-y-auto pb-8">
-             {/* Amount */}
-             <div className="bg-zinc-900 rounded-3xl p-4 mb-6 mt-4">
-               <div className="flex items-center text-3xl font-bold text-white">
-                 <span className="mr-1">$</span>
-                 <input 
-                   type="number" 
-                   value={newBudgetAmount} 
-                   onChange={e => setNewBudgetAmount(e.target.value)}
-                   placeholder="0"
-                   className="bg-transparent outline-none w-full placeholder-zinc-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                   autoFocus
-                 />
-               </div>
-             </div>
+            {/* Amount */}
+            <div className="bg-zinc-900 rounded-3xl p-4 mb-6 mt-4">
+              <div className="flex items-center text-3xl font-bold text-white">
+                <span className="mr-1">$</span>
+                <input
+                  type="number"
+                  value={newBudgetAmount}
+                  onChange={e => setNewBudgetAmount(e.target.value)}
+                  placeholder="0"
+                  className="bg-transparent outline-none w-full placeholder-zinc-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  autoFocus
+                />
+              </div>
+            </div>
 
-             {/* Allocation */}
-             <h3 className="text-white font-bold mb-3 px-1">分配</h3>
-             <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
-                <div className="flex items-center justify-between p-3 relative">
-                   <div className="flex items-center space-x-3">
-                      <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl">
-                         <LayoutGrid size={20} />
-                      </div>
-                      <span className="text-white font-medium">分類</span>
-                   </div>
-                   <div className="flex items-center">
-                     {!newBudgetCatId && <span className="text-red-400 text-sm font-bold mr-2">必填</span>}
-                     <select 
-                        value={newBudgetCatId}
-                        onChange={e => setNewBudgetCatId(e.target.value)}
-                        className="bg-transparent text-right text-white outline-none appearance-none pr-6 relative z-10"
-                     >
-                        <option value="" disabled>選擇分類</option>
-                        {categories.map(c => <option key={c.id} value={c.id} className="bg-zinc-900">{c.name}</option>)}
-                     </select>
-                     <ChevronRight size={18} className="text-zinc-600 absolute right-3 pointer-events-none"/>
-                   </div>
+            {/* Allocation */}
+            <h3 className="text-white font-bold mb-3 px-1">分配</h3>
+            <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
+              <div className="flex items-center justify-between p-3 relative">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl">
+                    <LayoutGrid size={20} />
+                  </div>
+                  <span className="text-white font-medium">分類</span>
                 </div>
-             </div>
+                <div className="flex items-center">
+                  {!newBudgetCatId && <span className="text-red-400 text-sm font-bold mr-2">必填</span>}
+                  <select
+                    value={newBudgetCatId}
+                    onChange={e => setNewBudgetCatId(e.target.value)}
+                    className="bg-transparent text-right text-white outline-none appearance-none pr-6 relative z-10"
+                  >
+                    <option value="" disabled>選擇分類</option>
+                    {categories.map(c => <option key={c.id} value={c.id} className="bg-zinc-900">{c.name}</option>)}
+                  </select>
+                  <ChevronRight size={18} className="text-zinc-600 absolute right-3 pointer-events-none" />
+                </div>
+              </div>
+            </div>
 
-             {/* Interval */}
-             <h3 className="text-white font-bold mb-3 px-1">間隔</h3>
-             <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
-                <div className="flex items-center justify-between p-3 border-b border-zinc-800">
-                   <div className="flex items-center space-x-3">
-                      <div className="bg-purple-500/20 text-purple-500 p-2 rounded-xl">
-                         <Repeat size={20} />
-                      </div>
-                      <span className="text-white font-medium">重複</span>
-                   </div>
-                   <div className="flex items-center text-zinc-400">
-                      <select 
-                        value={newBudgetRepeat}
-                        onChange={e => setNewBudgetRepeat(e.target.value)}
-                        className="bg-transparent text-right text-white outline-none appearance-none pr-6"
-                      >
-                        <option value="每日" className="bg-zinc-900">每日</option>
-                        <option value="每週" className="bg-zinc-900">每週</option>
-                        <option value="每月" className="bg-zinc-900">每月</option>
-                        <option value="每年" className="bg-zinc-900">每年</option>
-                      </select>
-                      <ChevronRight size={18} className="absolute right-8 pointer-events-none" />
-                   </div>
+            {/* Interval */}
+            <h3 className="text-white font-bold mb-3 px-1">間隔</h3>
+            <div className="bg-zinc-900 rounded-3xl p-2 mb-6">
+              <div className="flex items-center justify-between p-3 border-b border-zinc-800">
+                <div className="flex items-center space-x-3">
+                  <div className="bg-purple-500/20 text-purple-500 p-2 rounded-xl">
+                    <Repeat size={20} />
+                  </div>
+                  <span className="text-white font-medium">重複</span>
                 </div>
-                <div className="flex items-center justify-between p-3">
-                   <div className="flex items-center space-x-3">
-                      <div className={`bg-zinc-700/50 ${newBudgetEnd ? 'text-emerald-400' : 'text-zinc-400'} p-2 rounded-xl`}>
-                         <Flag size={20} />
-                      </div>
-                      <span className="text-white font-medium">結束</span>
-                   </div>
-                   <div className="flex items-center space-x-3">
-                     {newBudgetEnd && (
-                       <input 
-                         type="date" 
-                         value={newBudgetEndDate}
-                         onChange={e => setNewBudgetEndDate(e.target.value)}
-                         className="bg-transparent text-white text-right outline-none text-sm"
-                       />
-                     )}
-                     <button 
-                       onClick={() => setNewBudgetEnd(!newBudgetEnd)}
-                       className={`w-12 h-6 rounded-full relative transition-colors ${newBudgetEnd ? 'bg-emerald-400' : 'bg-zinc-700'}`}
-                     >
-                        <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${newBudgetEnd ? 'left-7' : 'left-1'}`}></div>
-                     </button>
-                   </div>
+                <div className="flex items-center text-zinc-400">
+                  <select
+                    value={newBudgetRepeat}
+                    onChange={e => setNewBudgetRepeat(e.target.value)}
+                    className="bg-transparent text-right text-white outline-none appearance-none pr-6"
+                  >
+                    <option value="每日" className="bg-zinc-900">每日</option>
+                    <option value="每週" className="bg-zinc-900">每週</option>
+                    <option value="每月" className="bg-zinc-900">每月</option>
+                    <option value="每年" className="bg-zinc-900">每年</option>
+                  </select>
+                  <ChevronRight size={18} className="absolute right-8 pointer-events-none" />
                 </div>
-             </div>
+              </div>
+              <div className="flex items-center justify-between p-3">
+                <div className="flex items-center space-x-3">
+                  <div className={`bg-zinc-700/50 ${newBudgetEnd ? 'text-emerald-400' : 'text-zinc-400'} p-2 rounded-xl`}>
+                    <Flag size={20} />
+                  </div>
+                  <span className="text-white font-medium">結束</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  {newBudgetEnd && (
+                    <input
+                      type="date"
+                      value={newBudgetEndDate}
+                      onChange={e => setNewBudgetEndDate(e.target.value)}
+                      className="bg-transparent text-white text-right outline-none text-sm"
+                    />
+                  )}
+                  <button
+                    onClick={() => setNewBudgetEnd(!newBudgetEnd)}
+                    className={`w-12 h-6 rounded-full relative transition-colors ${newBudgetEnd ? 'bg-emerald-400' : 'bg-zinc-700'}`}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${newBudgetEnd ? 'left-7' : 'left-1'}`}></div>
+                  </button>
+                </div>
+              </div>
+            </div>
 
-             {/* Note */}
-             <h3 className="text-white font-bold mb-3 px-1">備註</h3>
-             <div className="bg-zinc-900 rounded-3xl p-4 mb-6">
-               <textarea 
-                 value={newBudgetNote}
-                 onChange={e => setNewBudgetNote(e.target.value)}
-                 className="w-full bg-transparent outline-none text-white resize-none h-24 placeholder-zinc-600"
-                 placeholder=""
-               ></textarea>
-             </div>
+            {/* Note */}
+            <h3 className="text-white font-bold mb-3 px-1">備註</h3>
+            <div className="bg-zinc-900 rounded-3xl p-4 mb-6">
+              <textarea
+                value={newBudgetNote}
+                onChange={e => setNewBudgetNote(e.target.value)}
+                className="w-full bg-transparent outline-none text-white resize-none h-24 placeholder-zinc-600"
+                placeholder=""
+              ></textarea>
+            </div>
           </div>
         </div>
       )}
@@ -1376,7 +1387,7 @@ export default function App() {
             </button>
             <h2 className="text-lg font-bold text-white">預算詳情</h2>
             <div className="relative">
-              <button 
+              <button
                 onClick={() => setIsBudgetMenuOpen(!isBudgetMenuOpen)}
                 className="bg-zinc-800 text-zinc-300 p-2 rounded-full"
               >
@@ -1386,13 +1397,13 @@ export default function App() {
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setIsBudgetMenuOpen(false)}></div>
                   <div className="absolute right-0 top-full mt-2 w-32 bg-zinc-800 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
-                    <button 
+                    <button
                       onClick={() => { handleEditBudget(selectedBudget); setIsBudgetMenuOpen(false); }}
                       className="w-full text-left px-4 py-3 text-white hover:bg-zinc-700 flex items-center"
                     >
                       <Edit2 size={16} className="mr-2" /> 編輯
                     </button>
-                    <button 
+                    <button
                       onClick={() => { handleDeleteBudget(selectedBudget.id); setIsBudgetMenuOpen(false); }}
                       className="w-full text-left px-4 py-3 text-red-400 hover:bg-zinc-700 flex items-center"
                     >
@@ -1405,67 +1416,67 @@ export default function App() {
           </div>
 
           <div className="p-6 flex flex-col items-center">
-             {(() => {
-               const cat = categories.find(c => c.id === selectedBudget.category_id);
-               const spent = yearTransactions
-                 .filter(tx => {
-                   if (tx.category_id !== selectedBudget.category_id) return false;
-                   if (selectedBudget.end && selectedBudget.endDate) {
-                     return new Date(tx.date) <= new Date(selectedBudget.endDate);
-                   }
-                   return true;
-                 })
-                 .reduce((sum, tx) => sum + tx.amount, 0);
-               const remaining = selectedBudget.amount - spent;
-               
-               return (
-                 <>
-                   <div className="text-5xl font-bold text-white mb-2">
-                     {formatCurrency(selectedBudget.amount)}
-                   </div>
-                   <div className="text-zinc-400 mb-8">{selectedBudget.note || '無備註'}</div>
+            {(() => {
+              const cat = categories.find(c => c.id === selectedBudget.category_id);
+              const spent = yearTransactions
+                .filter(tx => {
+                  if (tx.category !== selectedBudget.category_id) return false;
+                  if (selectedBudget.end && selectedBudget.endDate) {
+                    return new Date(tx.date) <= new Date(selectedBudget.endDate);
+                  }
+                  return true;
+                })
+                .reduce((sum, tx) => sum + tx.amount, 0);
+              const remaining = selectedBudget.amount - spent;
 
-                   <div className="w-full bg-zinc-900 rounded-3xl overflow-hidden">
-                      <div className="flex items-center p-4 border-b border-zinc-800">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat?.bgColor || 'bg-zinc-800'} ${cat?.textColor || 'text-zinc-400'} mr-4`}>
-                          {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
-                        </div>
-                        <div>
-                          <p className="text-zinc-500 text-xs">分類</p>
-                          <p className="text-white font-medium">{cat?.name || '未分類'}</p>
-                        </div>
+              return (
+                <>
+                  <div className="text-5xl font-bold text-white mb-2">
+                    {formatCurrency(selectedBudget.amount)}
+                  </div>
+                  <div className="text-zinc-400 mb-8">{selectedBudget.note || '無備註'}</div>
+
+                  <div className="w-full bg-zinc-900 rounded-3xl overflow-hidden">
+                    <div className="flex items-center p-4 border-b border-zinc-800">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cat?.bgColor || 'bg-zinc-800'} ${cat?.textColor || 'text-zinc-400'} mr-4`}>
+                        {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
                       </div>
-                      <div className="flex items-center p-4 border-b border-zinc-800">
-                        <div className="bg-emerald-500/20 text-emerald-500 p-2 rounded-xl mr-4">
-                          <Repeat size={20} />
-                        </div>
-                        <div>
-                          <p className="text-zinc-500 text-xs">間隔</p>
-                          <p className="text-white font-medium">{selectedBudget.repeat}</p>
-                        </div>
+                      <div>
+                        <p className="text-zinc-500 text-xs">分類</p>
+                        <p className="text-white font-medium">{cat?.name || '未分類'}</p>
                       </div>
-                      <div className="flex items-center p-4 border-b border-zinc-800">
-                        <div className="bg-red-500/20 text-red-500 p-2 rounded-xl mr-4">
-                          <BarChart3 size={20} />
-                        </div>
-                        <div>
-                          <p className="text-zinc-500 text-xs">已支出</p>
-                          <p className="text-white font-medium">{formatCurrency(spent)}</p>
-                        </div>
+                    </div>
+                    <div className="flex items-center p-4 border-b border-zinc-800">
+                      <div className="bg-emerald-500/20 text-emerald-500 p-2 rounded-xl mr-4">
+                        <Repeat size={20} />
                       </div>
-                      <div className="flex items-center p-4">
-                        <div className={`${remaining < 0 ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-500'} p-2 rounded-xl mr-4`}>
-                          <Check size={20} />
-                        </div>
-                        <div>
-                          <p className="text-zinc-500 text-xs">剩餘</p>
-                          <p className={`${remaining < 0 ? 'text-red-400' : 'text-emerald-400'} font-medium`}>{formatCurrency(remaining)}</p>
-                        </div>
+                      <div>
+                        <p className="text-zinc-500 text-xs">間隔</p>
+                        <p className="text-white font-medium">{selectedBudget.repeat}</p>
                       </div>
-                   </div>
-                 </>
-               );
-             })()}
+                    </div>
+                    <div className="flex items-center p-4 border-b border-zinc-800">
+                      <div className="bg-red-500/20 text-red-500 p-2 rounded-xl mr-4">
+                        <BarChart3 size={20} />
+                      </div>
+                      <div>
+                        <p className="text-zinc-500 text-xs">已支出</p>
+                        <p className="text-white font-medium">{formatCurrency(spent)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center p-4">
+                      <div className={`${remaining < 0 ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-500'} p-2 rounded-xl mr-4`}>
+                        <Check size={20} />
+                      </div>
+                      <div>
+                        <p className="text-zinc-500 text-xs">剩餘</p>
+                        <p className={`${remaining < 0 ? 'text-red-400' : 'text-emerald-400'} font-medium`}>{formatCurrency(remaining)}</p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -1487,7 +1498,7 @@ export default function App() {
                 </button>
               ))}
             </div>
-            <button 
+            <button
               onClick={() => setIsResetDayOpen(false)}
               className="w-full py-3 rounded-xl bg-emerald-400 text-black font-bold"
             >
@@ -1506,13 +1517,13 @@ export default function App() {
             </button>
             <h2 className="text-lg font-bold text-white">分類</h2>
             <div className="flex space-x-3 text-white">
-              <button 
+              <button
                 onClick={() => setIsAddCatOpen(true)}
                 className="bg-zinc-800 p-2 rounded-full hover:bg-zinc-700"
               >
                 <Plus size={20} />
               </button>
-              <button 
+              <button
                 onClick={() => setIsCatEditMode(!isCatEditMode)}
                 className={`p-2 rounded-full transition-colors ${isCatEditMode ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-white hover:bg-zinc-700'}`}
               >
@@ -1525,15 +1536,15 @@ export default function App() {
             <h3 className="text-white font-bold mb-3 px-1 mt-4">常用</h3>
             <div className="bg-zinc-900 rounded-3xl p-2">
               {categories.map((cat) => (
-                <div 
+                <div
                   key={cat.id}
                   className="w-full flex items-center p-3 border-b border-zinc-800 last:border-0 rounded-xl relative group"
                 >
-                  <button 
-                    onClick={() => { 
+                  <button
+                    onClick={() => {
                       if (!isCatEditMode) {
-                        setNewCatId(cat.id); 
-                        setIsCatSelectOpen(false); 
+                        setNewCatId(cat.id);
+                        setIsCatSelectOpen(false);
                       }
                     }}
                     className="flex-1 flex items-center"
@@ -1543,10 +1554,10 @@ export default function App() {
                     </div>
                     <span className="text-white font-medium">{cat.name}</span>
                   </button>
-                  
+
                   {isCatEditMode && (
                     <div className="flex items-center space-x-2 animate-in fade-in slide-in-from-right-4">
-                      <button 
+                      <button
                         onClick={() => handleDeleteCategory(cat.id)}
                         className="bg-red-500/20 text-red-500 p-2 rounded-lg hover:bg-red-500 hover:text-white transition-colors"
                       >
@@ -1566,8 +1577,8 @@ export default function App() {
         <div className="fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-zinc-900 rounded-3xl w-full max-w-xs p-6">
             <h3 className="text-white font-bold text-lg mb-4">新增分類</h3>
-            <input 
-              type="text" 
+            <input
+              type="text"
               value={newCatName}
               onChange={(e) => setNewCatName(e.target.value)}
               placeholder="分類名稱"
@@ -1575,13 +1586,13 @@ export default function App() {
               autoFocus
             />
             <div className="flex space-x-3">
-              <button 
+              <button
                 onClick={() => setIsAddCatOpen(false)}
                 className="flex-1 py-3 rounded-xl bg-zinc-800 text-zinc-400 font-medium"
               >
                 取消
               </button>
-              <button 
+              <button
                 onClick={handleAddCategory}
                 className="flex-1 py-3 rounded-xl bg-emerald-400 text-black font-bold"
               >

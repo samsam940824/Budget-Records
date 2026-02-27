@@ -1,20 +1,43 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Budget Records React Project
 
-# Run and deploy your AI Studio app
+This is a Vite-powered React application with Tailwind CSS for creating budget records.
 
-This contains everything you need to run your app locally.
+## Features
+- Fast development with Vite
+- Tailwind CSS for styling
+- Configured with ESLint and TypeScript
+- GitHub Actions workflow for automated deployment to GitHub Pages
+- Backend powered by Supabase
 
-View your app in AI Studio: https://ai.studio/apps/8c9a6f68-295d-43f4-b61f-34ab2b6cb873
+## Prerequisites
+- Node.js (v20+ recommended)
 
-## Run Locally
+## Development Setup
 
-**Prerequisites:**  Node.js
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
 
+2. **Environment Variables:**
+   Copy the example env file and set your keys:
+   ```bash
+   cp .env.example .env.local
+   ```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+3. **Run the development server:**
+   ```bash
+   npm run dev
+   ```
+
+## Building & Deployment
+
+To build the project locally for production:
+```bash
+npm run build
+```
+
+This project is configured with a GitHub Action to automatically deploy the `main` branch to GitHub Pages upon push.
+
+## Git Configuration
+The `.gitignore` file has been pre-configured to ignore all Node.js and typical React development files (e.g., `node_modules`, `dist`, `.env` files).
