@@ -12,7 +12,7 @@ export function useSettings() {
         if (!user) return;
         try {
             setLoading(true);
-            const data = await SettingsService.get(user.id);
+            const data = await SettingsService.getSettings(user.id);
             setSettings(data);
         } catch (error) {
             console.error('Error fetching settings:', error);
@@ -28,7 +28,7 @@ export function useSettings() {
     const updateSettings = async (updates: Partial<UserSettings>) => {
         if (!user) return null;
         try {
-            const data = await SettingsService.update(user.id, updates);
+            const data = await SettingsService.updateSettings(user.id, updates);
             if (data) {
                 setSettings(data);
                 return data;
