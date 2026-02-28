@@ -22,7 +22,7 @@ export interface Record {
     amount: number;
     category_id: string;
     date: string;
-    time: string;
+    time: string | null;
     description: string;
     currency_code: string;
     location: string;

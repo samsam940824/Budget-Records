@@ -63,19 +63,24 @@ export default function RecordForm({
     const handleSubmit = async () => {
         if (!amount || !categoryId || !paymentMethodId) return;
         setLoading(true);
-        await onSave({
-            amount: Number(amount),
-            type,
-            category_id: categoryId,
-            description: note,
-            currency_code: currency,
-            location,
-            date,
-            time: isTimeEnabled ? time : '',
-            payment_method_id: paymentMethodId
-        });
-        setLoading(false);
-        onClose();
+        try {
+            await onSave({
+                amount: Number(amount),
+                type,
+                category_id: categoryId,
+                description: note,
+                currency_code: currency,
+                location,
+                date,
+                time: isTimeEnabled ? time : null,
+                payment_method_id: paymentMethodId
+            });
+            onClose();
+        } catch (error) {
+            console.error('Failed to save record:', error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (

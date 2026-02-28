@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { OptionsService } from '../data/options';
 import { Category, PaymentMethod } from '../types/database.types';
 import { useAuth } from './useAuth';
@@ -9,12 +9,17 @@ export function useOptions() {
     const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const hasInitialized = useRef(false);
+
     const fetchOptions = async () => {
         if (!user) return;
         setLoading(true);
         try {
-            // Ensure defaults exist
-            await OptionsService.initializeDefaultsIfMissing(user.id);
+            // Ensure defaults exist only once per component lifecycle to prevent strict-mode double-inserts
+            if (!hasInitialized.current) {
+                hasInitialized.current = true;
+                await OptionsService.initializeDefaultsIfMissing(user.id);
+            }
 
             const [cats, pays] = await Promise.all([
                 OptionsService.getCategories(user.id),
