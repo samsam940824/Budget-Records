@@ -68,11 +68,11 @@ export const OptionsService = {
 
         if (cats.length === 0) {
             const catsToInsert = DEFAULT_CATEGORIES.map(c => ({ ...c, user_id: userId }));
-            await supabase.from('categories').insert(catsToInsert);
+            await supabase.from('categories').upsert(catsToInsert, { onConflict: 'user_id,name', ignoreDuplicates: true });
         }
         if (pays.length === 0) {
             const paysToInsert = DEFAULT_PAYMENT_METHODS.map(p => ({ ...p, user_id: userId }));
-            await supabase.from('payment_methods').insert(paysToInsert);
+            await supabase.from('payment_methods').upsert(paysToInsert, { onConflict: 'user_id,name', ignoreDuplicates: true });
         }
     }
 };

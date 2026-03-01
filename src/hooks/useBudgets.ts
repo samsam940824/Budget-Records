@@ -42,7 +42,7 @@ export function useBudgets() {
     const updateBudget = async (id: string, updates: Partial<Budget>) => {
         if (!user) return null;
         try {
-            const data = await BudgetsService.updateBudget(id, user.id, updates);
+            const data = await BudgetsService.updateBudget(user.id, id, updates);
             if (data) {
                 setBudgets(prev => prev.map(b => (b.id === id ? data : b)));
                 return data;
@@ -56,7 +56,7 @@ export function useBudgets() {
     const deleteBudget = async (id: string) => {
         if (!user) return false;
         try {
-            await BudgetsService.deleteBudget(id, user.id);
+            await BudgetsService.deleteBudget(user.id, id);
             setBudgets(prev => prev.filter(b => b.id !== id));
             return true;
         } catch (error) {

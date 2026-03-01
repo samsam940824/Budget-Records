@@ -14,7 +14,23 @@ import {
 import { supabase } from './lib/supabaseClient';
 import { formatCurrency, IconMap } from './utils/helpers';
 
+export type TimeFilterMode = 'month' | 'year' | 'custom';
+export interface TimeFilter {
+  mode: TimeFilterMode;
+  start: string;
+  end: string;
+  label: string;
+}
+
 const YEARS = [2024, 2025, 2026, 2027, 2028];
+
+// Helper to get fresh month start/end
+const getMonthRange = (year: number, month: number) => {
+  const start = `${year}-${String(month).padStart(2, '0')}-01`;
+  const endDate = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, '0')}-${String(endDate).padStart(2, '0')}`;
+  return { start, end };
+};
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -39,36 +55,62 @@ function MainApp({ user }: { user: any }) {
   const { categories } = useOptions();
 
   const [activeTab, setActiveTab] = useState('overview');
-  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+
+  // Time Filter State
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>(() => {
+    const defaultInitDate = new Date();
+    const range = getMonthRange(defaultInitDate.getFullYear(), defaultInitDate.getMonth() + 1);
+    return {
+      mode: 'month',
+      start: range.start,
+      end: range.end,
+      label: `${defaultInitDate.getFullYear()}年${defaultInitDate.getMonth() + 1}月`
+    };
+  });
 
   // UI States
-  const [isYearSelectorOpen, setIsYearSelectorOpen] = useState(false);
+  const [isTimeSelectorOpen, setIsTimeSelectorOpen] = useState(false);
+  const [timeSelectorTab, setTimeSelectorTab] = useState<TimeFilterMode>('month');
+  const [tempYear, setTempYear] = useState(new Date().getFullYear());
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
 
-  // Search Logic
   const filteredTransactions = useMemo(() => {
-    if (!searchQuery) return [];
     return transactions.filter(tx => {
-      const cat = categories.find(c => c.id === tx.category_id);
-      return (
-        (tx.note && tx.note.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        cat?.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        String(tx.amount).includes(searchQuery)
-      );
+      // 1. Time Filter
+      const matchTime = tx.date >= timeFilter.start && tx.date <= timeFilter.end;
+
+      // 2. Search Logic
+      let matchSearch = true;
+      if (searchQuery) {
+        const cat = categories.find(c => c.id === tx.category_id);
+        matchSearch =
+          (tx.note && tx.note.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (cat?.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          String(tx.amount).includes(searchQuery);
+      }
+
+      return matchTime && matchSearch;
     });
-  }, [transactions, searchQuery, categories]); return (
+  }, [transactions, searchQuery, categories, timeFilter]); return (
     <div className="min-h-screen bg-black font-sans text-zinc-100 selection:bg-emerald-500/30">
 
       {/* Global Header (Floating) */}
       <div className="fixed top-0 left-0 right-0 z-40 px-4 pt-8 pb-2 bg-gradient-to-b from-black via-black/80 to-transparent pointer-events-none">
         <div className="flex justify-between items-center pointer-events-auto max-w-md mx-auto">
           <button
-            onClick={() => setIsYearSelectorOpen(true)}
+            onClick={() => {
+              setTempYear(new Date(timeFilter.start).getFullYear());
+              setTimeSelectorTab(timeFilter.mode);
+              setIsTimeSelectorOpen(true);
+            }}
             className="bg-zinc-800 text-zinc-300 px-4 py-1.5 rounded-full text-sm font-medium flex items-center hover:bg-zinc-700 active:scale-95 transition-all"
           >
-            年 {currentYear} <ChevronRight size={14} className="ml-1 rotate-90" />
+            {timeFilter.label} <ChevronRight size={14} className="ml-1 rotate-90" />
           </button>
           <button
             onClick={() => setIsSearchOpen(true)}
@@ -81,8 +123,8 @@ function MainApp({ user }: { user: any }) {
 
       {/* Main Content */}
       <main className="max-w-md mx-auto relative min-h-screen">
-        {activeTab === 'overview' && <Overview currentYear={currentYear} setActiveTab={setActiveTab} onCategorySelect={(id) => { setSelectedCategoryId(id); setActiveTab('transactions'); }} />}
-        {activeTab === 'transactions' && <RecordList searchQuery={searchQuery} currentYear={currentYear} filterCategory={selectedCategoryId} onFilterCategoryChange={setSelectedCategoryId} />}
+        {activeTab === 'overview' && <Overview timeFilter={timeFilter} setActiveTab={setActiveTab} onCategorySelect={(id) => { setSelectedCategoryId(id); setActiveTab('transactions'); }} />}
+        {activeTab === 'transactions' && <RecordList timeFilter={timeFilter} searchQuery={searchQuery} filterCategory={selectedCategoryId} onFilterCategoryChange={setSelectedCategoryId} />}
         {activeTab === 'budget' && <BudgetView />}
         {activeTab === 'settings' && <SettingsView />}
 
@@ -110,25 +152,115 @@ function MainApp({ user }: { user: any }) {
         </nav>
       </main>
 
-      {/* Year Selector Modal */}
-      {isYearSelectorOpen && (
+      {/* Time Selector Modal */}
+      {isTimeSelectorOpen && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-zinc-900 rounded-3xl w-full max-w-xs overflow-hidden">
-            <div className="p-4 border-b border-zinc-800 flex justify-between items-center">
-              <h3 className="text-white font-bold">選擇年份</h3>
-              <button onClick={() => setIsYearSelectorOpen(false)}><X size={20} className="text-zinc-400" /></button>
+          <div className="bg-zinc-900 rounded-3xl w-full max-w-xs overflow-hidden flex flex-col max-h-[80vh]">
+            <div className="p-4 border-b border-zinc-800 flex justify-between items-center shrink-0">
+              <h3 className="text-white font-bold">選擇時間</h3>
+              <button onClick={() => setIsTimeSelectorOpen(false)}><X size={20} className="text-zinc-400" /></button>
             </div>
-            <div className="max-h-80 overflow-y-auto">
-              {YEARS.map(year => (
+
+            <div className="flex p-2 bg-zinc-800/50 shrink-0">
+              {(['month', 'year', 'custom'] as TimeFilterMode[]).map(tab => (
                 <button
-                  key={year}
-                  onClick={() => { setCurrentYear(year); setIsYearSelectorOpen(false); }}
-                  className={`w-full p-4 text-left font-medium flex justify-between items-center hover:bg-zinc-800 transition-colors ${currentYear === year ? 'text-emerald-400' : 'text-white'}`}
+                  key={tab}
+                  onClick={() => setTimeSelectorTab(tab)}
+                  className={`flex-1 py-1.5 text-sm font-medium rounded-xl transition-colors ${timeSelectorTab === tab ? 'bg-zinc-700 text-white' : 'text-zinc-400'}`}
                 >
-                  {year}
-                  {currentYear === year && <Check size={18} />}
+                  {tab === 'month' ? '月' : tab === 'year' ? '年' : '日期'}
                 </button>
               ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto w-full">
+              {timeSelectorTab === 'month' && (
+                <div>
+                  <div className="flex justify-between items-center p-4 sticky top-0 bg-zinc-900 border-b border-zinc-800 z-10">
+                    <button onClick={() => setTempYear(prev => prev - 1)} className="p-1"><ChevronRight size={20} className="rotate-180 text-zinc-400" /></button>
+                    <span className="text-white font-bold">{tempYear}年</span>
+                    <button onClick={() => setTempYear(prev => prev + 1)} className="p-1"><ChevronRight size={20} className="text-zinc-400" /></button>
+                  </div>
+                  <div className="p-2">
+                    {Array.from({ length: 12 }).map((_, i) => {
+                      const m = i + 1;
+                      const { start, end } = getMonthRange(tempYear, m);
+                      const monthTotal = transactions
+                        .filter(tx => tx.date >= start && tx.date <= end && tx.type === 'expense')
+                        .reduce((sum, tx) => sum + tx.amount, 0);
+
+                      const isSelected = timeFilter.mode === 'month' && timeFilter.start === start;
+
+                      return (
+                        <button
+                          key={m}
+                          onClick={() => {
+                            setTimeFilter({ mode: 'month', start, end, label: `${tempYear}年${m}月` });
+                            setIsTimeSelectorOpen(false);
+                          }}
+                          className={`w-full p-3 text-left font-medium flex justify-between items-center rounded-2xl transition-colors ${isSelected ? 'bg-emerald-500/20 text-emerald-400' : 'text-zinc-300 hover:bg-zinc-800'}`}
+                        >
+                          <span>{m}月</span>
+                          <span className="text-sm font-normal text-zinc-500">{monthTotal > 0 ? `-${formatCurrency(monthTotal)}` : ''}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {timeSelectorTab === 'year' && (
+                <div className="p-2">
+                  {YEARS.map(y => {
+                    const start = `${y}-01-01`;
+                    const end = `${y}-12-31`;
+                    const yearTotal = transactions
+                      .filter(tx => tx.date >= start && tx.date <= end && tx.type === 'expense')
+                      .reduce((sum, tx) => sum + tx.amount, 0);
+
+                    const isSelected = timeFilter.mode === 'year' && timeFilter.start === start;
+
+                    return (
+                      <button
+                        key={y}
+                        onClick={() => {
+                          setTimeFilter({ mode: 'year', start, end, label: `${y}年` });
+                          setIsTimeSelectorOpen(false);
+                        }}
+                        className={`w-full p-4 text-left font-medium flex justify-between items-center rounded-2xl transition-colors ${isSelected ? 'bg-emerald-500/20 text-emerald-400' : 'text-zinc-300 hover:bg-zinc-800'}`}
+                      >
+                        <span>{y}年</span>
+                        <span className="text-sm font-normal text-zinc-500">{yearTotal > 0 ? `-${formatCurrency(yearTotal)}` : ''}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {timeSelectorTab === 'custom' && (
+                <div className="p-6 space-y-4">
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-2 block">開始日期</label>
+                    <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-full bg-zinc-800 text-white p-3 rounded-xl outline-none" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-zinc-500 mb-2 block">結束日期</label>
+                    <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-full bg-zinc-800 text-white p-3 rounded-xl outline-none" />
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (customStart && customEnd && customStart <= customEnd) {
+                        setTimeFilter({ mode: 'custom', start: customStart, end: customEnd, label: `${customStart.slice(5)} ~ ${customEnd.slice(5)}` });
+                        setIsTimeSelectorOpen(false);
+                      }
+                    }}
+                    className="w-full py-3 bg-emerald-500 text-black font-bold rounded-xl mt-4 disabled:opacity-50"
+                    disabled={!customStart || !customEnd || customStart > customEnd}
+                  >
+                    套用區間
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

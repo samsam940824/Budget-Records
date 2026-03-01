@@ -6,14 +6,16 @@ import { formatCurrency, IconMap } from '../../utils/helpers';
 import RecordForm from './RecordForm';
 import { Record as DbRecord } from '../../types/database.types';
 
+import { TimeFilter } from '../../App';
+
 interface RecordListProps {
     searchQuery?: string;
-    currentYear?: number;
+    timeFilter: TimeFilter;
     filterCategory?: string;
     onFilterCategoryChange?: (id: string) => void;
 }
 
-export default function RecordList({ searchQuery = '', currentYear = new Date().getFullYear(), filterCategory = '', onFilterCategoryChange }: RecordListProps) {
+export default function RecordList({ searchQuery = '', timeFilter, filterCategory = '', onFilterCategoryChange }: RecordListProps) {
     const { transactions, deleteTransaction, addTransaction, updateTransaction } = useTransactions();
     const { categories, paymentMethods, loading: optionsLoading } = useOptions();
 
@@ -25,8 +27,6 @@ export default function RecordList({ searchQuery = '', currentYear = new Date().
 
     // Filter State
     const [isFilterOpen, setIsFilterOpen] = useState(false);
-    const [filterStartDate, setFilterStartDate] = useState('');
-    const [filterEndDate, setFilterEndDate] = useState('');
 
     // Derived state
     const totalExpense = useMemo(() => {
@@ -35,9 +35,7 @@ export default function RecordList({ searchQuery = '', currentYear = new Date().
 
     const filteredTxs = useMemo(() => {
         return transactions.filter(tx => {
-            const matchYear = tx.date.startsWith(String(currentYear));
-            const matchStartDate = !filterStartDate || tx.date >= filterStartDate;
-            const matchEndDate = !filterEndDate || tx.date <= filterEndDate;
+            const matchTime = tx.date >= timeFilter.start && tx.date <= timeFilter.end;
             const matchCat = !filterCategory || tx.category_id === filterCategory;
             let matchSearch = true;
             if (searchQuery) {
@@ -48,9 +46,9 @@ export default function RecordList({ searchQuery = '', currentYear = new Date().
                     (cat?.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
                     String(tx.amount).includes(searchQuery);
             }
-            return matchYear && matchStartDate && matchEndDate && matchCat && matchSearch;
+            return matchTime && matchCat && matchSearch;
         });
-    }, [transactions, currentYear, filterStartDate, filterEndDate, filterCategory, searchQuery, categories]);
+    }, [transactions, timeFilter, filterCategory, searchQuery, categories]);
 
     const groupedTransactions = useMemo(() => {
         const groups: Record<string, typeof transactions> = {};
@@ -91,7 +89,7 @@ export default function RecordList({ searchQuery = '', currentYear = new Date().
                 <h1 className="text-3xl font-bold text-white">交易</h1>
                 <button
                     onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className={`p-2 rounded-full transition-colors ${isFilterOpen || filterStartDate || filterEndDate || filterCategory ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-zinc-400'}`}
+                    className={`p-2 rounded-full transition-colors ${isFilterOpen || filterCategory ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-zinc-400'}`}
                 >
                     <Filter size={20} />
                 </button>
@@ -100,16 +98,6 @@ export default function RecordList({ searchQuery = '', currentYear = new Date().
             {isFilterOpen && (
                 <div className="bg-zinc-900 rounded-2xl p-4 mb-6 animate-in slide-in-from-top-4">
                     <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-xs text-zinc-500 mb-1 block">開始日期</label>
-                                <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm" />
-                            </div>
-                            <div>
-                                <label className="text-xs text-zinc-500 mb-1 block">結束日期</label>
-                                <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm" />
-                            </div>
-                        </div>
                         <div>
                             <label className="text-xs text-zinc-500 mb-1 block">分類</label>
                             <select value={filterCategory} onChange={e => onFilterCategoryChange?.(e.target.value)} className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm appearance-none">
@@ -118,8 +106,8 @@ export default function RecordList({ searchQuery = '', currentYear = new Date().
                             </select>
                         </div>
                     </div>
-                    {(filterStartDate || filterEndDate || filterCategory) && (
-                        <button onClick={() => { setFilterStartDate(''); setFilterEndDate(''); onFilterCategoryChange?.(''); }} className="mt-3 text-xs text-red-400 font-medium">
+                    {filterCategory && (
+                        <button onClick={() => { onFilterCategoryChange?.(''); }} className="mt-3 text-xs text-red-400 font-medium">
                             清除篩選
                         </button>
                     )}

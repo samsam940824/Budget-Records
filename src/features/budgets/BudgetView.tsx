@@ -7,6 +7,14 @@ import { useSettings } from '../../hooks/useSettings';
 import { formatCurrency, IconMap } from '../../utils/helpers';
 import { Budget } from '../../types/database.types';
 
+const REPEAT_MAP: Record<string, string> = {
+    daily: '每日',
+    weekly: '每週',
+    monthly: '每月',
+    yearly: '每年',
+    none: '不重複'
+};
+
 export default function BudgetView() {
     const { budgets, addBudget, updateBudget, deleteBudget } = useBudgets();
     const { transactions } = useTransactions();
@@ -23,7 +31,7 @@ export default function BudgetView() {
 
     const [newBudgetAmount, setNewBudgetAmount] = useState('');
     const [newBudgetCatId, setNewBudgetCatId] = useState('');
-    const [newBudgetRepeat, setNewBudgetRepeat] = useState('每月');
+    const [newBudgetRepeat, setNewBudgetRepeat] = useState('monthly');
     const [newBudgetEnd, setNewBudgetEnd] = useState(false);
     const [newBudgetEndDate, setNewBudgetEndDate] = useState('');
     const [newBudgetNote, setNewBudgetNote] = useState('');
@@ -98,7 +106,7 @@ export default function BudgetView() {
         setEditingBudgetId(budget.id);
         setNewBudgetAmount(String(budget.amount));
         setNewBudgetCatId(budget.category_id);
-        setNewBudgetRepeat(budget.repeat || '每月');
+        setNewBudgetRepeat(budget.repeat || 'monthly');
         setNewBudgetEnd(!!budget.end_date);
         setNewBudgetEndDate(budget.end_date || '');
         setNewBudgetNote(budget.note || '');
@@ -199,7 +207,7 @@ export default function BudgetView() {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-zinc-500 text-xs mb-1">
-                                        1月{String(resetDay).padStart(2, '0')}日 - {budget.end_date ? new Date(budget.end_date).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) : '12月31日'}
+                                        1月{String(resetDay).padStart(2, '0')}日 - {budget.end_date ? new Date(budget.end_date).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) : '無期限'}
                                     </p>
                                     <div className={`flex items-center justify-end font-bold ${isOver ? 'text-red-400' : 'text-emerald-400'}`}>
                                         {formatCurrency(budget.amount - spent)} <ChevronRight size={16} className="ml-1 text-zinc-600" />
@@ -284,10 +292,11 @@ export default function BudgetView() {
                                         onChange={e => setNewBudgetRepeat(e.target.value)}
                                         className="bg-transparent text-right text-white outline-none appearance-none pr-6"
                                     >
-                                        <option value="每日" className="bg-zinc-900">每日</option>
-                                        <option value="每週" className="bg-zinc-900">每週</option>
-                                        <option value="每月" className="bg-zinc-900">每月</option>
-                                        <option value="每年" className="bg-zinc-900">每年</option>
+                                        <option value="daily" className="bg-zinc-900">每日</option>
+                                        <option value="weekly" className="bg-zinc-900">每週</option>
+                                        <option value="monthly" className="bg-zinc-900">每月</option>
+                                        <option value="yearly" className="bg-zinc-900">每年</option>
+                                        <option value="none" className="bg-zinc-900">不重複</option>
                                     </select>
                                     <ChevronRight size={18} className="absolute right-0 pointer-events-none" />
                                 </div>
@@ -368,7 +377,7 @@ export default function BudgetView() {
                                         </div>
                                         <div className="flex items-center p-4 border-b border-zinc-800">
                                             <div className="bg-emerald-500/20 text-emerald-500 p-2 rounded-xl mr-4"><Repeat size={20} /></div>
-                                            <div><p className="text-zinc-500 text-xs">間隔</p><p className="text-white font-medium">{selectedBudget.repeat || '每月'}</p></div>
+                                            <div><p className="text-zinc-500 text-xs">間隔</p><p className="text-white font-medium">{REPEAT_MAP[selectedBudget.repeat || 'monthly']}</p></div>
                                         </div>
                                         <div className="flex items-center p-4 border-b border-zinc-800">
                                             <div className="bg-red-500/20 text-red-500 p-2 rounded-xl mr-4"><BarChart3 size={20} /></div>

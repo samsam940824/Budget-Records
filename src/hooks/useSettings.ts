@@ -12,6 +12,7 @@ export function useSettings() {
         if (!user) return;
         try {
             setLoading(true);
+            await SettingsService.initializeSettingsIfMissing(user.id);
             const data = await SettingsService.getSettings(user.id);
             setSettings(data);
         } catch (error) {

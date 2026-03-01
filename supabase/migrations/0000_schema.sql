@@ -18,7 +18,8 @@ CREATE TABLE IF NOT EXISTS public.categories (
     icon TEXT NOT NULL,
     color TEXT NOT NULL,
     sort_order INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, name)
 );
 
 -- Table: payment_methods
@@ -28,7 +29,8 @@ CREATE TABLE IF NOT EXISTS public.payment_methods (
     name TEXT NOT NULL,
     icon TEXT NOT NULL,
     sort_order INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(user_id, name)
 );
 
 -- Table: records (transactions)
@@ -54,9 +56,9 @@ CREATE TABLE IF NOT EXISTS public.budgets (
     category_id UUID REFERENCES public.categories(id) ON DELETE SET NULL,
     amount NUMERIC NOT NULL,
     currency_code TEXT DEFAULT 'TWD',
-    repeat TEXT DEFAULT 'none' CHECK (repeat IN ('none', 'monthly', 'yearly')),
+    repeat TEXT DEFAULT 'none' CHECK (repeat IN ('none', 'daily', 'weekly', 'monthly', 'yearly')),
     start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
+    end_date DATE,
     note TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
