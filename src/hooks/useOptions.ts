@@ -92,6 +92,20 @@ export function useOptions() {
         return null;
     };
 
+    const updatePaymentMethod = async (id: string, paymentMethod: Partial<PaymentMethod>) => {
+        if (!user) return null;
+        try {
+            const data = await OptionsService.updatePaymentMethod(user.id, id, paymentMethod);
+            if (data) {
+                setPaymentMethods(prev => prev.map(p => p.id === id ? data : p));
+                return data;
+            }
+        } catch (error) {
+            console.error('Error updating payment method:', error);
+        }
+        return null;
+    };
+
     const deletePaymentMethod = async (id: string) => {
         if (!user) return false;
         try {
@@ -113,6 +127,7 @@ export function useOptions() {
         updateCategory,
         deleteCategory,
         addPaymentMethod,
+        updatePaymentMethod,
         deletePaymentMethod
     };
 }

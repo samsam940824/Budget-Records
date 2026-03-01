@@ -4,23 +4,29 @@ import { useTransactions } from '../../hooks/useTransactions';
 import { useOptions } from '../../hooks/useOptions';
 import { formatCurrency, IconMap } from '../../utils/helpers';
 import RecordForm from './RecordForm';
-import { Record } from '../../types/database.types';
+import { Record as DbRecord } from '../../types/database.types';
 
-export default function RecordList() {
+interface RecordListProps {
+    searchQuery?: string;
+    currentYear?: number;
+    filterCategory?: string;
+    onFilterCategoryChange?: (id: string) => void;
+}
+
+export default function RecordList({ searchQuery = '', currentYear = new Date().getFullYear(), filterCategory = '', onFilterCategoryChange }: RecordListProps) {
     const { transactions, deleteTransaction, addTransaction, updateTransaction } = useTransactions();
     const { categories, paymentMethods, loading: optionsLoading } = useOptions();
 
     const [isNewTxOpen, setIsNewTxOpen] = useState(false);
-    const [selectedTx, setSelectedTx] = useState<Record | null>(null);
+    const [selectedTx, setSelectedTx] = useState<DbRecord | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [isTxMenuOpen, setIsTxMenuOpen] = useState(false);
-    const [editingTx, setEditingTx] = useState<Record | null>(null);
+    const [editingTx, setEditingTx] = useState<DbRecord | null>(null);
 
     // Filter State
     const [isFilterOpen, setIsFilterOpen] = useState(false);
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
-    const [filterCategory, setFilterCategory] = useState('');
 
     // Derived state
     const totalExpense = useMemo(() => {
@@ -29,12 +35,22 @@ export default function RecordList() {
 
     const filteredTxs = useMemo(() => {
         return transactions.filter(tx => {
+            const matchYear = tx.date.startsWith(String(currentYear));
             const matchStartDate = !filterStartDate || tx.date >= filterStartDate;
             const matchEndDate = !filterEndDate || tx.date <= filterEndDate;
             const matchCat = !filterCategory || tx.category_id === filterCategory;
-            return matchStartDate && matchEndDate && matchCat;
+            let matchSearch = true;
+            if (searchQuery) {
+                const cat = categories.find(c => c.id === tx.category_id);
+                matchSearch =
+                    ((tx as any).note && (tx as any).note.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                    (tx.description && tx.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                    (cat?.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+                    String(tx.amount).includes(searchQuery);
+            }
+            return matchYear && matchStartDate && matchEndDate && matchCat && matchSearch;
         });
-    }, [transactions, filterStartDate, filterEndDate, filterCategory]);
+    }, [transactions, currentYear, filterStartDate, filterEndDate, filterCategory, searchQuery, categories]);
 
     const groupedTransactions = useMemo(() => {
         const groups: Record<string, typeof transactions> = {};
@@ -61,7 +77,7 @@ export default function RecordList() {
         return `${y}年${m}月${d}日 ${getDayOfWeek(dateStr)}`;
     };
 
-    const handleSave = async (record: Omit<Record, 'id' | 'user_id'>) => {
+    const handleSave = async (record: Omit<DbRecord, 'id' | 'user_id'>) => {
         if (editingTx) {
             await updateTransaction(editingTx.id, record);
         } else {
@@ -96,14 +112,14 @@ export default function RecordList() {
                         </div>
                         <div>
                             <label className="text-xs text-zinc-500 mb-1 block">分類</label>
-                            <select value={filterCategory} onChange={e => setFilterCategory(e.target.value)} className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm appearance-none">
+                            <select value={filterCategory} onChange={e => onFilterCategoryChange?.(e.target.value)} className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm appearance-none">
                                 <option value="">全部</option>
                                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
                     </div>
                     {(filterStartDate || filterEndDate || filterCategory) && (
-                        <button onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterCategory(''); }} className="mt-3 text-xs text-red-400 font-medium">
+                        <button onClick={() => { setFilterStartDate(''); setFilterEndDate(''); onFilterCategoryChange?.(''); }} className="mt-3 text-xs text-red-400 font-medium">
                             清除篩選
                         </button>
                     )}

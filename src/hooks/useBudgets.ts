@@ -12,7 +12,7 @@ export function useBudgets() {
         if (!user) return;
         try {
             setLoading(true);
-            const data = await BudgetsService.getAll(user.id);
+            const data = await BudgetsService.getBudgets(user.id);
             setBudgets(data);
         } catch (error) {
             console.error('Error fetching budgets:', error);
@@ -28,7 +28,7 @@ export function useBudgets() {
     const addBudget = async (budget: Omit<Budget, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
         if (!user) return null;
         try {
-            const data = await BudgetsService.create(user.id, budget);
+            const data = await BudgetsService.addBudget(user.id, budget);
             if (data) {
                 setBudgets(prev => [data, ...prev]);
                 return data;
@@ -42,7 +42,7 @@ export function useBudgets() {
     const updateBudget = async (id: string, updates: Partial<Budget>) => {
         if (!user) return null;
         try {
-            const data = await BudgetsService.update(id, user.id, updates);
+            const data = await BudgetsService.updateBudget(id, user.id, updates);
             if (data) {
                 setBudgets(prev => prev.map(b => (b.id === id ? data : b)));
                 return data;
@@ -56,11 +56,9 @@ export function useBudgets() {
     const deleteBudget = async (id: string) => {
         if (!user) return false;
         try {
-            const success = await BudgetsService.delete(id, user.id);
-            if (success) {
-                setBudgets(prev => prev.filter(b => b.id !== id));
-                return true;
-            }
+            await BudgetsService.deleteBudget(id, user.id);
+            setBudgets(prev => prev.filter(b => b.id !== id));
+            return true;
         } catch (error) {
             console.error('Error deleting budget:', error);
         }

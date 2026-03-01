@@ -45,6 +45,7 @@ function MainApp({ user }: { user: any }) {
   const [isYearSelectorOpen, setIsYearSelectorOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
 
   // Search Logic
   const filteredTransactions = useMemo(() => {
@@ -80,8 +81,8 @@ function MainApp({ user }: { user: any }) {
 
       {/* Main Content */}
       <main className="max-w-md mx-auto relative min-h-screen">
-        {activeTab === 'overview' && <Overview currentYear={currentYear} setActiveTab={setActiveTab} />}
-        {activeTab === 'transactions' && <RecordList />}
+        {activeTab === 'overview' && <Overview currentYear={currentYear} setActiveTab={setActiveTab} onCategorySelect={(id) => { setSelectedCategoryId(id); setActiveTab('transactions'); }} />}
+        {activeTab === 'transactions' && <RecordList searchQuery={searchQuery} currentYear={currentYear} filterCategory={selectedCategoryId} onFilterCategoryChange={setSelectedCategoryId} />}
         {activeTab === 'budget' && <BudgetView />}
         {activeTab === 'settings' && <SettingsView />}
 

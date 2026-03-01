@@ -10,7 +10,7 @@ import { IconMap } from '../../utils/helpers';
 export default function SettingsView() {
     const { user } = useAuth();
     const { settings, updateSettings } = useSettings();
-    const { categories, addCategory, deleteCategory, paymentMethods, addPaymentMethod, deletePaymentMethod } = useOptions();
+    const { categories, addCategory, updateCategory, deleteCategory, paymentMethods, addPaymentMethod, updatePaymentMethod, deletePaymentMethod } = useOptions();
 
     const [activeSection, setActiveSection] = useState<'main' | 'categories' | 'payments'>('main');
 
@@ -77,10 +77,34 @@ export default function SettingsView() {
                     {categories.map(cat => (
                         <div key={cat.id} className="w-full flex items-center justify-between p-3 border-b border-zinc-800 last:border-0 rounded-xl">
                             <div className="flex items-center space-x-4">
-                                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-zinc-800 text-white" style={{ color: cat.color ? cat.color : undefined }}>
+                                <div className="w-10 h-10 shrink-0 rounded-xl flex items-center justify-center bg-zinc-800 text-white" style={{ color: cat.color ? cat.color : undefined }}>
                                     {IconMap[cat.icon] || <Wallet size={20} />}
                                 </div>
-                                <span className="text-white font-medium">{cat.name}</span>
+                                {isCatEditMode ? (
+                                    <div className="flex-1 flex items-center space-x-2">
+                                        <input
+                                            type="text"
+                                            value={cat.name}
+                                            onChange={e => updateCategory(cat.id, { name: e.target.value })}
+                                            className="w-24 bg-zinc-800 text-white px-2 py-1 rounded-lg text-sm"
+                                        />
+                                        <input
+                                            type="color"
+                                            value={cat.color || '#9ca3af'}
+                                            onChange={e => updateCategory(cat.id, { color: e.target.value })}
+                                            className="w-8 h-8 rounded shrink-0 cursor-pointer"
+                                        />
+                                        <select
+                                            value={cat.icon}
+                                            onChange={e => updateCategory(cat.id, { icon: e.target.value })}
+                                            className="w-20 bg-zinc-800 text-white rounded-lg px-1 py-1 shrink-0 text-sm overflow-hidden"
+                                        >
+                                            {Object.keys(IconMap).map(k => <option key={k} value={k}>{k}</option>)}
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <span className="text-white font-medium">{cat.name}</span>
+                                )}
                             </div>
                             {isCatEditMode && (
                                 <button
@@ -129,10 +153,28 @@ export default function SettingsView() {
                     {paymentMethods.map(method => (
                         <div key={method.id} className="w-full flex items-center justify-between p-4 border-b border-zinc-800 last:border-0 rounded-xl">
                             <div className="flex items-center space-x-4">
-                                <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl">
+                                <div className="bg-blue-500/20 text-blue-500 p-2 shrink-0 rounded-xl">
                                     {IconMap[method.icon] || <CreditCard size={20} />}
                                 </div>
-                                <span className="text-white font-medium">{method.name}</span>
+                                {isPaymentEditMode ? (
+                                    <div className="flex-1 flex items-center space-x-2">
+                                        <input
+                                            type="text"
+                                            value={method.name}
+                                            onChange={e => updatePaymentMethod(method.id, { name: e.target.value })}
+                                            className="w-32 bg-zinc-800 text-white px-2 py-1 rounded-lg text-sm"
+                                        />
+                                        <select
+                                            value={method.icon}
+                                            onChange={e => updatePaymentMethod(method.id, { icon: e.target.value })}
+                                            className="w-24 bg-zinc-800 text-white rounded-lg px-1 py-1 shrink-0 text-sm overflow-hidden"
+                                        >
+                                            {Object.keys(IconMap).map(k => <option key={k} value={k}>{k}</option>)}
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <span className="text-white font-medium">{method.name}</span>
+                                )}
                             </div>
                             {isPaymentEditMode && (
                                 <button

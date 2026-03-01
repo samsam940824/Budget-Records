@@ -49,6 +49,12 @@ export const OptionsService = {
         return data;
     },
 
+    async updatePaymentMethod(userId: string, id: string, paymentMethod: Partial<PaymentMethod>) {
+        const { data, error } = await supabase.from('payment_methods').update(paymentMethod).eq('id', id).eq('user_id', userId).select().single();
+        if (error) throw error;
+        return data;
+    },
+
     async deletePaymentMethod(userId: string, id: string) {
         const { error } = await supabase.from('payment_methods').delete().eq('id', id).eq('user_id', userId);
         if (error) throw error;

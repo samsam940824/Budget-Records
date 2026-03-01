@@ -8,9 +8,10 @@ import { formatCurrency, IconMap } from '../../utils/helpers';
 interface OverviewProps {
     currentYear: number;
     setActiveTab: (tab: string) => void;
+    onCategorySelect?: (categoryId: string) => void;
 }
 
-export default function Overview({ currentYear, setActiveTab }: OverviewProps) {
+export default function Overview({ currentYear, setActiveTab, onCategorySelect }: OverviewProps) {
     const { transactions } = useTransactions();
     const { categories } = useOptions();
 
@@ -142,7 +143,11 @@ export default function Overview({ currentYear, setActiveTab }: OverviewProps) {
                         <div
                             key={cat.id}
                             onClick={() => {
-                                setActiveTab('transactions');
+                                if (onCategorySelect) {
+                                    onCategorySelect(cat.id);
+                                } else {
+                                    setActiveTab('transactions');
+                                }
                             }}
                             className="flex items-center p-3 border-b border-zinc-800 last:border-0 cursor-pointer hover:bg-zinc-800 transition-colors rounded-2xl"
                         >
