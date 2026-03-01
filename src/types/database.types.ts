@@ -35,10 +35,10 @@ export interface Budget {
     category_id: string;
     amount: number;
     currency_code: string;
-    repeat: 'none' | 'monthly' | 'yearly';
+    repeat: 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
     start_date: string;
-    end_date: string;
-    note: string;
+    end_date: string | null;
+    note: string | null;
 }
 
 export interface UserSettings {

@@ -79,28 +79,33 @@ ALTER TABLE public.budgets ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users can manage their own settings"
 ON public.user_settings
 FOR ALL
-USING (auth.uid() = user_id);
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
 
 -- Policies: categories
 CREATE POLICY "Users can manage their own categories"
 ON public.categories
 FOR ALL
-USING (auth.uid() = user_id);
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
 
 -- Policies: payment_methods
 CREATE POLICY "Users can manage their own payment methods"
 ON public.payment_methods
 FOR ALL
-USING (auth.uid() = user_id);
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
 
 -- Policies: records
 CREATE POLICY "Users can manage their own records"
 ON public.records
 FOR ALL
-USING (auth.uid() = user_id);
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
 
 -- Policies: budgets
 CREATE POLICY "Users can manage their own budgets"
 ON public.budgets
 FOR ALL
-USING (auth.uid() = user_id);
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
