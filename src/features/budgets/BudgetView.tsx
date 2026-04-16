@@ -22,7 +22,71 @@ export default function BudgetView() {
     const { settings, updateSettings } = useSettings();
 
     const resetDay = settings?.budget_reset_day || 1;
-    const currentYear = new Date().getFullYear();
+
+    // Compute the active period [start, end] for a budget based on its repeat cycle.
+    // Why: each budget should only count spending within the current cycle, not lifetime totals.
+    const getCurrentPeriod = (budget: Budget): { start: string; end: string } => {
+        const today = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+        let start: Date;
+        let end: Date;
+
+        switch (budget.repeat) {
+            case 'daily':
+                start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                end = start;
+                break;
+            case 'weekly': {
+                const day = today.getDay(); // 0 = Sunday
+                start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - day);
+                end = new Date(today.getFullYear(), today.getMonth(), today.getDate() - day + 6);
+                break;
+            }
+            case 'yearly':
+                start = new Date(today.getFullYear(), 0, 1);
+                end = new Date(today.getFullYear(), 11, 31);
+                break;
+            case 'none':
+                start = new Date(budget.start_date);
+                end = budget.end_date ? new Date(budget.end_date) : new Date(2999, 11, 31);
+                break;
+            case 'monthly':
+            default: {
+                const reset = Math.min(resetDay, 28);
+                if (today.getDate() >= reset) {
+                    start = new Date(today.getFullYear(), today.getMonth(), reset);
+                    end = new Date(today.getFullYear(), today.getMonth() + 1, reset - 1);
+                } else {
+                    start = new Date(today.getFullYear(), today.getMonth() - 1, reset);
+                    end = new Date(today.getFullYear(), today.getMonth(), reset - 1);
+                }
+                break;
+            }
+        }
+
+        // Clamp by the budget's own start_date / end_date.
+        const budgetStart = new Date(budget.start_date);
+        if (start < budgetStart) start = budgetStart;
+        if (budget.end_date) {
+            const budgetEnd = new Date(budget.end_date);
+            if (end > budgetEnd) end = budgetEnd;
+        }
+        return { start: fmt(start), end: fmt(end) };
+    };
+
+    const calcSpent = (budget: Budget): number => {
+        const { start, end } = getCurrentPeriod(budget);
+        return transactions
+            .filter(tx =>
+                tx.type === 'expense' &&
+                tx.category_id === budget.category_id &&
+                tx.date >= start &&
+                tx.date <= end
+            )
+            .reduce((sum, tx) => sum + Number(tx.amount), 0);
+    };
 
     // State
     const [isBudgetHeaderMenuOpen, setIsBudgetHeaderMenuOpen] = useState(false);
@@ -43,28 +107,11 @@ export default function BudgetView() {
     // Derived
     const totalBudget = budgets.reduce((sum, b) => sum + b.amount, 0);
 
-    const yearTransactions = useMemo(() =>
-        transactions.filter(tx => tx.date.startsWith(String(currentYear))),
-        [transactions, currentYear]
-    );
-
     const remaining = useMemo(() => {
         if (budgets.length === 0) return 0;
-        let totalRem = 0;
-        budgets.forEach(budget => {
-            const spent = yearTransactions
-                .filter(tx => {
-                    if (tx.category_id !== budget.category_id) return false;
-                    if (budget.end_date) {
-                        return new Date(tx.date) <= new Date(budget.end_date);
-                    }
-                    return true;
-                })
-                .reduce((sum, tx) => sum + tx.amount, 0);
-            totalRem += (budget.amount - spent);
-        });
-        return totalRem;
-    }, [budgets, yearTransactions]);
+        return budgets.reduce((acc, b) => acc + (b.amount - calcSpent(b)), 0);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [budgets, transactions, resetDay]);
 
     const isOverBudget = remaining < 0;
 
@@ -177,17 +224,12 @@ export default function BudgetView() {
             <div className="space-y-4">
                 {budgets.map(budget => {
                     const cat = categories.find(c => c.id === budget.category_id);
-                    const spent = yearTransactions
-                        .filter(tx => {
-                            if (tx.category_id !== budget.category_id) return false;
-                            if (budget.end_date) {
-                                return new Date(tx.date) <= new Date(budget.end_date);
-                            }
-                            return true;
-                        })
-                        .reduce((sum, tx) => sum + tx.amount, 0);
-                    const percent = Math.min((spent / budget.amount) * 100, 100);
+                    const spent = calcSpent(budget);
+                    const period = getCurrentPeriod(budget);
+                    const percent = budget.amount > 0 ? Math.min((spent / budget.amount) * 100, 100) : 0;
                     const isOver = budget.amount - spent < 0;
+                    const formatPeriodDate = (d: string) =>
+                        new Date(d).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' });
 
                     return (
                         <div
@@ -207,7 +249,7 @@ export default function BudgetView() {
                                 </div>
                                 <div className="text-right">
                                     <p className="text-zinc-500 text-xs mb-1">
-                                        1月{String(resetDay).padStart(2, '0')}日 - {budget.end_date ? new Date(budget.end_date).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' }) : '無期限'}
+                                        {formatPeriodDate(period.start)} - {formatPeriodDate(period.end)}
                                     </p>
                                     <div className={`flex items-center justify-end font-bold ${isOver ? 'text-red-400' : 'text-emerald-400'}`}>
                                         {formatCurrency(budget.amount - spent)} <ChevronRight size={16} className="ml-1 text-zinc-600" />
@@ -353,15 +395,7 @@ export default function BudgetView() {
                     <div className="p-6 flex flex-col items-center">
                         {(() => {
                             const cat = categories.find(c => c.id === selectedBudget.category_id);
-                            const spent = yearTransactions
-                                .filter(tx => {
-                                    if (tx.category_id !== selectedBudget.category_id) return false;
-                                    if (selectedBudget.end_date) {
-                                        return new Date(tx.date) <= new Date(selectedBudget.end_date);
-                                    }
-                                    return true;
-                                })
-                                .reduce((sum, tx) => sum + tx.amount, 0);
+                            const spent = calcSpent(selectedBudget);
                             const remainingBudget = selectedBudget.amount - spent;
                             const isOver = remainingBudget < 0;
 

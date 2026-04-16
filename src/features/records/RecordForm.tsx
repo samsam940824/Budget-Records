@@ -105,10 +105,11 @@ export default function RecordForm({
                         <span className="mr-1">$</span>
                         <input
                             type="number"
+                            inputMode="decimal"
                             value={amount}
                             onChange={e => setAmount(e.target.value)}
                             placeholder="0"
-                            className="bg-transparent outline-none w-full placeholder-zinc-700"
+                            className="bg-transparent outline-none w-full placeholder-zinc-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             autoFocus
                         />
                     </div>

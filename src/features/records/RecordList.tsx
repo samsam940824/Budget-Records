@@ -30,8 +30,18 @@ export default function RecordList({ searchQuery = '', timeFilter, filterCategor
 
     // Derived state
     const totalExpense = useMemo(() => {
-        return transactions.filter(tx => tx.type === 'expense').reduce((sum, tx) => sum + tx.amount, 0);
-    }, [transactions]);
+        return filteredTxsForSummary().reduce((sum, tx) => sum + Number(tx.amount), 0);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [transactions, timeFilter, filterCategory]);
+
+    function filteredTxsForSummary() {
+        return transactions.filter(tx =>
+            tx.type === 'expense' &&
+            tx.date >= timeFilter.start &&
+            tx.date <= timeFilter.end &&
+            (!filterCategory || tx.category_id === filterCategory)
+        );
+    }
 
     const filteredTxs = useMemo(() => {
         return transactions.filter(tx => {
@@ -39,11 +49,11 @@ export default function RecordList({ searchQuery = '', timeFilter, filterCategor
             const matchCat = !filterCategory || tx.category_id === filterCategory;
             let matchSearch = true;
             if (searchQuery) {
+                const q = searchQuery.toLowerCase();
                 const cat = categories.find(c => c.id === tx.category_id);
                 matchSearch =
-                    ((tx as any).note && (tx as any).note.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                    (tx.description && tx.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                    (cat?.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+                    (!!tx.description && tx.description.toLowerCase().includes(q)) ||
+                    (cat?.name?.toLowerCase() || '').includes(q) ||
                     String(tx.amount).includes(searchQuery);
             }
             return matchTime && matchCat && matchSearch;
@@ -128,7 +138,9 @@ export default function RecordList({ searchQuery = '', timeFilter, filterCategor
             <div className="space-y-8">
                 {sortedDates.map(date => {
                     const dailyTxs = groupedTransactions[date];
-                    const dailyTotal = dailyTxs.reduce((sum, tx) => sum + tx.amount, 0);
+                    const dailyTotal = dailyTxs
+                        .filter(tx => tx.type === 'expense')
+                        .reduce((sum, tx) => sum + Number(tx.amount), 0);
 
                     return (
                         <div key={date}>
@@ -178,10 +190,16 @@ export default function RecordList({ searchQuery = '', timeFilter, filterCategor
             {/* Floating Add Button */}
             <button
                 onClick={() => {
+                    if (categories.length === 0 || paymentMethods.length === 0) {
+                        alert('請先到「設定」建立分類與支付方式');
+                        return;
+                    }
                     setEditingTx(null);
                     setIsNewTxOpen(true);
                 }}
-                className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20 text-black hover:scale-105 transition-transform z-40"
+                aria-label="新增交易"
+                disabled={optionsLoading}
+                className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20 text-black hover:scale-105 transition-transform z-40 disabled:opacity-50"
             >
                 <Plus size={24} />
             </button>

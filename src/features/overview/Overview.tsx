@@ -21,21 +21,32 @@ export default function Overview({ timeFilter, setActiveTab, onCategorySelect }:
     const [isPending, startTransition] = React.useTransition();
 
     const timeFilteredTransactions = useMemo(() =>
-        transactions.filter(tx => tx.date >= timeFilter.start && tx.date <= timeFilter.end),
+        transactions.filter(tx =>
+            tx.type === 'expense' &&
+            tx.date >= timeFilter.start &&
+            tx.date <= timeFilter.end
+        ),
         [transactions, timeFilter]
     );
 
     const totalExpense = useMemo(() =>
-        timeFilteredTransactions.reduce((sum, tx) => sum + tx.amount, 0),
+        timeFilteredTransactions.reduce((sum, tx) => sum + Number(tx.amount), 0),
         [timeFilteredTransactions]
     );
+
+    const rangeDays = useMemo(() => {
+        const start = new Date(timeFilter.start);
+        const end = new Date(timeFilter.end);
+        const diff = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        return Math.max(diff, 1);
+    }, [timeFilter]);
 
     const categoryStats = useMemo(() => {
         const stats: Record<string, number> = {};
         timeFilteredTransactions.forEach(tx => {
             const catId = tx.category_id || (categories[0]?.id);
             if (catId && categories.find(c => c.id === catId)) {
-                stats[catId] = (stats[catId] || 0) + tx.amount;
+                stats[catId] = (stats[catId] || 0) + Number(tx.amount);
             }
         });
         return categories.map(c => ({
@@ -54,7 +65,9 @@ export default function Overview({ timeFilter, setActiveTab, onCategorySelect }:
             const monthTxs = timeFilteredTransactions.filter(tx => tx.date.startsWith(monthPrefix));
             const monthObj: any = { name: `${i}月` };
             categories.forEach(c => {
-                monthObj[c.id] = monthTxs.filter(tx => tx.category_id === c.id).reduce((s, t) => s + t.amount, 0);
+                monthObj[c.id] = monthTxs
+                    .filter(tx => tx.category_id === c.id)
+                    .reduce((s, t) => s + Number(t.amount), 0);
             });
             data.push(monthObj);
         }
@@ -106,7 +119,7 @@ export default function Overview({ timeFilter, setActiveTab, onCategorySelect }:
                                 <p className="text-zinc-400 text-xs">平均每筆交易</p>
                             </div>
                             <div className="absolute bottom-0 right-0 text-right">
-                                <p className="text-white font-medium">{formatCurrency(totalExpense / 365)}</p>
+                                <p className="text-white font-medium">{formatCurrency(totalExpense / rangeDays)}</p>
                                 <p className="text-zinc-400 text-xs">平均每日額</p>
                             </div>
                             <ResponsiveContainer width="100%" height="100%">

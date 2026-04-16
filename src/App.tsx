@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import Login from './features/auth/Login';
 import RecordList from './features/records/RecordList';
@@ -22,7 +22,8 @@ export interface TimeFilter {
   label: string;
 }
 
-const YEARS = [2024, 2025, 2026, 2027, 2028];
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = Array.from({ length: 7 }, (_, i) => CURRENT_YEAR - 2 + i);
 
 // Helper to get fresh month start/end
 const getMonthRange = (year: number, month: number) => {
@@ -79,6 +80,16 @@ function MainApp({ user }: { user: any }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (isTimeSelectorOpen) setIsTimeSelectorOpen(false);
+      else if (isSearchOpen) { setIsSearchOpen(false); setSearchQuery(''); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isTimeSelectorOpen, isSearchOpen]);
+
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
       // 1. Time Filter
@@ -87,16 +98,19 @@ function MainApp({ user }: { user: any }) {
       // 2. Search Logic
       let matchSearch = true;
       if (searchQuery) {
+        const q = searchQuery.toLowerCase();
         const cat = categories.find(c => c.id === tx.category_id);
         matchSearch =
-          (tx.note && tx.note.toLowerCase().includes(searchQuery.toLowerCase())) ||
-          (cat?.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+          (!!tx.description && tx.description.toLowerCase().includes(q)) ||
+          (!!cat?.name && cat.name.toLowerCase().includes(q)) ||
           String(tx.amount).includes(searchQuery);
       }
 
       return matchTime && matchSearch;
     });
-  }, [transactions, searchQuery, categories, timeFilter]); return (
+  }, [transactions, searchQuery, categories, timeFilter]);
+
+  return (
     <div className="min-h-screen bg-black font-sans text-zinc-100 selection:bg-emerald-500/30">
 
       {/* Global Header (Floating) */}
@@ -187,7 +201,7 @@ function MainApp({ user }: { user: any }) {
                       const { start, end } = getMonthRange(tempYear, m);
                       const monthTotal = transactions
                         .filter(tx => tx.date >= start && tx.date <= end && tx.type === 'expense')
-                        .reduce((sum, tx) => sum + tx.amount, 0);
+                        .reduce((sum, tx) => sum + Number(tx.amount), 0);
 
                       const isSelected = timeFilter.mode === 'month' && timeFilter.start === start;
 
@@ -298,7 +312,7 @@ function MainApp({ user }: { user: any }) {
                       {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
                     </div>
                     <div>
-                      <p className="text-white font-medium">{tx.note || cat?.name}</p>
+                      <p className="text-white font-medium">{tx.description || cat?.name}</p>
                       <p className="text-xs text-zinc-500">{tx.date}</p>
                     </div>
                   </div>
