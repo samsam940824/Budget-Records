@@ -1,7 +1,26 @@
 {
-  "name": "react-example",
-  "private": true,
-  "version": "0.0.0",
+  "name": "budget-records",
+  "version": "0.1.0",
+  "description": "A privacy-friendly personal budgeting and expense tracking web app built with React, Vite, Tailwind, and Supabase.",
+  "license": "MIT",
+  "author": "samsam940824",
+  "homepage": "https://samsam940824.github.io/Budget-Records/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samsam940824/Budget-Records.git"
+  },
+  "bugs": {
+    "url": "https://github.com/samsam940824/Budget-Records/issues"
+  },
+  "keywords": [
+    "budget",
+    "expense-tracker",
+    "react",
+    "vite",
+    "supabase",
+    "tailwindcss",
+    "personal-finance"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
