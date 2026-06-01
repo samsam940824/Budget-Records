@@ -29,7 +29,7 @@ Thanks for taking the time to contribute. This project is small and maintained b
 - **TypeScript strict**, no `any`. Use `unknown` + type guards if you must.
 - **React 19 + Composition API style hooks**. Keep components small and single-purpose.
 - **Tailwind v4** for styling. Avoid custom global CSS unless unavoidable.
-- **Supabase access stays in `src/hooks/`** — don't call `supabase` directly from components.
+- **Supabase access should stay in `src/data/`, `src/hooks/`, or auth-specific modules** — components should not call `supabase` directly. Data-layer modules under `src/data/` own the queries; hooks compose them and expose state to components.
 - **No `console.log` in committed code.** Use it during development, remove before pushing.
 - Money uses `number` today; if you touch arithmetic-sensitive paths, prefer integer cents over floats.
 

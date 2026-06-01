@@ -53,6 +53,10 @@ Out of scope:
 
 Once a fix is released, the reporter is credited in the release notes unless they prefer anonymity. Coordinated disclosure timing will be agreed before the advisory is made public.
 
+## Threat model
+
+A repo-specific threat model documenting assets, trust boundaries, and mitigations is maintained at [`docs/THREAT_MODEL.md`](./docs/THREAT_MODEL.md). It is reviewed before every minor release and whenever the architecture changes.
+
 ## Known security-relevant design notes
 
 - All multi-tenant data is protected by Postgres Row Level Security; the anon key is intentionally exposed to the browser. Any RLS bypass is a critical issue.

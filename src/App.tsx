@@ -9,9 +9,8 @@ import { useTransactions } from './hooks/useTransactions';
 import { useOptions } from './hooks/useOptions';
 import {
   Search, Settings, X, ChevronRight,
-  LayoutGrid, List, Wallet, Check
+  LayoutGrid, List, Wallet
 } from 'lucide-react';
-import { supabase } from './lib/supabaseClient';
 import { formatCurrency, IconMap } from './utils/helpers';
 
 export type TimeFilterMode = 'month' | 'year' | 'custom';
