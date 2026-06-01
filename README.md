@@ -19,10 +19,9 @@ This repository is intentionally small and readable — it's meant to be forkabl
 
 ## Screenshots
 
-<!-- TODO: replace with real screenshots once captured -->
 | Overview | Records | Budgets |
 |---|---|---|
-| _coming soon_ | _coming soon_ | _coming soon_ |
+| ![Overview](./docs/Overview.png) | ![Records](./docs/Records.png) | ![Budgets](./docs/Budgets.png) |
 
 ## Features
 
