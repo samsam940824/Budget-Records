@@ -1,0 +1,49 @@
+name: Supabase Keepalive
+
+on:
+  schedule:
+    # 09:40 Asia/Taipei every Monday and Thursday. GitHub cron uses UTC.
+    - cron: "40 1 * * 1,4"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Supabase REST API
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          SUPABASE_KEEPALIVE_TABLE: ${{ vars.SUPABASE_KEEPALIVE_TABLE }}
+        run: |
+          set -euo pipefail
+
+          keepalive_table="${SUPABASE_KEEPALIVE_TABLE:-categories}"
+
+          if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_ANON_KEY:-}" ]]; then
+            echo "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY repository secret."
+            exit 1
+          fi
+
+          # RLS restricts every table to its owning user, so an anon request
+          # returns HTTP 200 with an empty array. That still counts as project
+          # activity, which is all the free tier needs to stay unpaused.
+          response_code="$(curl --silent --show-error --output /tmp/supabase_keepalive_response.txt --write-out "%{http_code}" \
+            --get "$SUPABASE_URL/rest/v1/$keepalive_table" \
+            --data-urlencode "select=id" \
+            --data-urlencode "limit=1" \
+            --header "apikey: $SUPABASE_ANON_KEY" \
+            --header "Authorization: Bearer $SUPABASE_ANON_KEY")"
+
+          if [[ "$response_code" -lt 200 || "$response_code" -ge 300 ]]; then
+            echo "Supabase keepalive failed with HTTP $response_code."
+            cat /tmp/supabase_keepalive_response.txt
+            exit 1
+          fi
+
+          echo "Supabase keepalive OK (HTTP $response_code)."
