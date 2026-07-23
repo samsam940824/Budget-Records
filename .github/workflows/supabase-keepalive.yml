@@ -2,8 +2,8 @@ name: Supabase Keepalive
 
 on:
   schedule:
-    # 09:40 Asia/Taipei every Monday and Thursday. GitHub cron uses UTC.
-    - cron: "40 1 * * 1,4"
+    # 09:40 Asia/Taipei every day. GitHub cron uses UTC.
+    - cron: "40 1 * * *"
   workflow_dispatch:
 
 permissions:
@@ -14,31 +14,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Ping Supabase REST API
+      - name: Write Supabase keepalive heartbeat
         shell: bash
         env:
           SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          SUPABASE_KEEPALIVE_TABLE: ${{ vars.SUPABASE_KEEPALIVE_TABLE }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
 
-          keepalive_table="${SUPABASE_KEEPALIVE_TABLE:-categories}"
-
-          if [[ -z "${SUPABASE_URL:-}" || -z "${SUPABASE_ANON_KEY:-}" ]]; then
-            echo "Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY repository secret."
+          if [[ -z "${SUPABASE_URL:-}" ]]; then
+            echo "Missing VITE_SUPABASE_URL repository secret."
             exit 1
           fi
 
-          # RLS restricts every table to its owning user, so an anon request
-          # returns HTTP 200 with an empty array. That still counts as project
-          # activity, which is all the free tier needs to stay unpaused.
+          if [[ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+            echo "Missing SUPABASE_SERVICE_ROLE_KEY repository secret."
+            exit 1
+          fi
+
+          # An anon read is blocked by RLS and does NOT reset the free-tier
+          # auto-pause timer. A real write with the service_role key (which
+          # bypasses RLS) registers as genuine database activity.
+          now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           response_code="$(curl --silent --show-error --output /tmp/supabase_keepalive_response.txt --write-out "%{http_code}" \
-            --get "$SUPABASE_URL/rest/v1/$keepalive_table" \
-            --data-urlencode "select=id" \
-            --data-urlencode "limit=1" \
-            --header "apikey: $SUPABASE_ANON_KEY" \
-            --header "Authorization: Bearer $SUPABASE_ANON_KEY")"
+            -X POST "$SUPABASE_URL/rest/v1/keepalive" \
+            --header "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+            --header "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            --header "Content-Type: application/json" \
+            --header "Prefer: resolution=merge-duplicates" \
+            --data "{\"id\":1,\"last_ping\":\"$now\"}")"
 
           if [[ "$response_code" -lt 200 || "$response_code" -ge 300 ]]; then
             echo "Supabase keepalive failed with HTTP $response_code."
@@ -46,4 +50,4 @@ jobs:
             exit 1
           fi
 
-          echo "Supabase keepalive OK (HTTP $response_code)."
+          echo "Supabase keepalive OK (HTTP $response_code, last_ping=$now)."
