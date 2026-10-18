@@ -1,17 +1,44 @@
 import { supabase } from '../lib/supabaseClient';
 import { Category, PaymentMethod } from '../types/database.types';
 
-const DEFAULT_CATEGORIES = [
-    { name: '餐飲', icon: 'Coffee', color: '#f59e0b', sort_order: 1 },
-    { name: '交通', icon: 'Train', color: '#3b82f6', sort_order: 2 },
-    { name: '購物', icon: 'ShoppingBag', color: '#ec4899', sort_order: 3 },
-    { name: '居住', icon: 'Umbrella', color: '#10b981', sort_order: 4 },
+export type NewCategory = Omit<Category, 'id' | 'user_id'>;
+export type NewAccount = Omit<PaymentMethod, 'id' | 'user_id'>;
+
+const DEFAULT_EXPENSE_CATEGORIES: NewCategory[] = [
+    { name: '餐飲', icon: 'Utensils', color: '#f59e0b', sort_order: 1, type: 'expense' },
+    { name: '交通', icon: 'Train', color: '#3b82f6', sort_order: 2, type: 'expense' },
+    { name: '購物', icon: 'ShoppingBag', color: '#ec4899', sort_order: 3, type: 'expense' },
+    { name: '居住', icon: 'Home', color: '#10b981', sort_order: 4, type: 'expense' },
+    { name: '娛樂', icon: 'Gamepad2', color: '#8b5cf6', sort_order: 5, type: 'expense' },
+    { name: '醫療', icon: 'HeartPulse', color: '#ef4444', sort_order: 6, type: 'expense' },
 ];
 
-const DEFAULT_PAYMENT_METHODS = [
-    { name: '現金', icon: 'Banknote', sort_order: 1 },
-    { name: '信用卡', icon: 'CreditCard', sort_order: 2 },
+const DEFAULT_INCOME_CATEGORIES: NewCategory[] = [
+    { name: '薪資', icon: 'Briefcase', color: '#10b981', sort_order: 101, type: 'income' },
+    { name: '獎金', icon: 'Gift', color: '#f59e0b', sort_order: 102, type: 'income' },
+    { name: '投資', icon: 'TrendingUp', color: '#3b82f6', sort_order: 103, type: 'income' },
+    { name: '其他收入', icon: 'Coins', color: '#a1a1aa', sort_order: 104, type: 'income' },
 ];
+
+const ACCOUNT_DEFAULTS = {
+    color: '#3b82f6',
+    initial_balance: 0,
+    currency_code: 'TWD',
+    include_in_total: true,
+    archived: false,
+};
+
+const DEFAULT_ACCOUNTS: NewAccount[] = [
+    { ...ACCOUNT_DEFAULTS, name: '現金', icon: 'Banknote', sort_order: 1, color: '#10b981' },
+    { ...ACCOUNT_DEFAULTS, name: '信用卡', icon: 'CreditCard', sort_order: 2, color: '#f59e0b' },
+];
+
+export const newAccountDefaults = (name: string, sort_order: number): NewAccount => ({
+    ...ACCOUNT_DEFAULTS,
+    name,
+    icon: 'Wallet',
+    sort_order,
+});
 
 export const OptionsService = {
     async getCategories(userId: string): Promise<Category[]> {
@@ -26,13 +53,13 @@ export const OptionsService = {
         return data || [];
     },
 
-    async addCategory(userId: string, category: Omit<Category, 'id' | 'user_id'>) {
+    async addCategory(userId: string, category: NewCategory): Promise<Category> {
         const { data, error } = await supabase.from('categories').insert([{ ...category, user_id: userId }]).select().single();
         if (error) throw error;
         return data;
     },
 
-    async updateCategory(userId: string, id: string, category: Partial<Category>) {
+    async updateCategory(userId: string, id: string, category: Partial<Category>): Promise<Category> {
         const { data, error } = await supabase.from('categories').update(category).eq('id', id).eq('user_id', userId).select().single();
         if (error) throw error;
         return data;
@@ -43,14 +70,14 @@ export const OptionsService = {
         if (error) throw error;
     },
 
-    async addPaymentMethod(userId: string, paymentMethod: Omit<PaymentMethod, 'id' | 'user_id'>) {
-        const { data, error } = await supabase.from('payment_methods').insert([{ ...paymentMethod, user_id: userId }]).select().single();
+    async addPaymentMethod(userId: string, account: NewAccount): Promise<PaymentMethod> {
+        const { data, error } = await supabase.from('payment_methods').insert([{ ...account, user_id: userId }]).select().single();
         if (error) throw error;
         return data;
     },
 
-    async updatePaymentMethod(userId: string, id: string, paymentMethod: Partial<PaymentMethod>) {
-        const { data, error } = await supabase.from('payment_methods').update(paymentMethod).eq('id', id).eq('user_id', userId).select().single();
+    async updatePaymentMethod(userId: string, id: string, account: Partial<PaymentMethod>): Promise<PaymentMethod> {
+        const { data, error } = await supabase.from('payment_methods').update(account).eq('id', id).eq('user_id', userId).select().single();
         if (error) throw error;
         return data;
     },
@@ -60,19 +87,29 @@ export const OptionsService = {
         if (error) throw error;
     },
 
-    async initializeDefaultsIfMissing(userId: string) {
+    /**
+     * Seeds starter categories and accounts. Income categories are also added
+     * for users who signed up before income categories existed, unless they
+     * already record income under some category.
+     */
+    async initializeDefaultsIfMissing(userId: string, hasIncomeRecords: boolean) {
         const [cats, pays] = await Promise.all([
             this.getCategories(userId),
-            this.getPaymentMethods(userId)
+            this.getPaymentMethods(userId),
         ]);
 
-        if (cats.length === 0) {
-            const catsToInsert = DEFAULT_CATEGORIES.map(c => ({ ...c, user_id: userId }));
-            await supabase.from('categories').upsert(catsToInsert, { onConflict: 'user_id,name', ignoreDuplicates: true });
+        const toInsert: NewCategory[] = [];
+        if (cats.length === 0) toInsert.push(...DEFAULT_EXPENSE_CATEGORIES);
+        if (!cats.some(c => c.type === 'income') && !hasIncomeRecords) toInsert.push(...DEFAULT_INCOME_CATEGORIES);
+        if (toInsert.length > 0) {
+            await supabase
+                .from('categories')
+                .upsert(toInsert.map(c => ({ ...c, user_id: userId })), { onConflict: 'user_id,name', ignoreDuplicates: true });
         }
         if (pays.length === 0) {
-            const paysToInsert = DEFAULT_PAYMENT_METHODS.map(p => ({ ...p, user_id: userId }));
-            await supabase.from('payment_methods').upsert(paysToInsert, { onConflict: 'user_id,name', ignoreDuplicates: true });
+            await supabase
+                .from('payment_methods')
+                .upsert(DEFAULT_ACCOUNTS.map(p => ({ ...p, user_id: userId })), { onConflict: 'user_id,name', ignoreDuplicates: true });
         }
-    }
+    },
 };

@@ -1,281 +1,211 @@
-import React, { useState, useMemo } from 'react';
-import { Filter, Wallet, MoreHorizontal, X, Edit2, Trash2, LayoutGrid, Calendar, MapPin, Plus } from 'lucide-react';
-import { useTransactions } from '../../hooks/useTransactions';
-import { useOptions } from '../../hooks/useOptions';
-import { formatCurrency, IconMap } from '../../utils/helpers';
-import RecordForm from './RecordForm';
-import { Record as DbRecord } from '../../types/database.types';
-
+import React, { useMemo, useState } from 'react';
+import { SlidersHorizontal, ArrowUpDown, Plus } from 'lucide-react';
+import { useData } from '../../data/DataContext';
 import { TimeFilter } from '../../App';
+import { RecordType } from '../../types/database.types';
+import { formatCurrency, formatDateHeader } from '../../utils/helpers';
+import { periodTotals } from '../../lib/balances';
+import { Card } from '../../components/ui';
+import RecordRow, { buildLookup } from './RecordRow';
+import { useRecordUI } from './RecordUI';
+import { filterRecords, RecordFilters, SortKey, sortRecords } from './filterRecords';
 
 interface RecordListProps {
-    searchQuery?: string;
     timeFilter: TimeFilter;
     filterCategory?: string;
     onFilterCategoryChange?: (id: string) => void;
 }
 
-export default function RecordList({ searchQuery = '', timeFilter, filterCategory = '', onFilterCategoryChange }: RecordListProps) {
-    const { transactions, deleteTransaction, addTransaction, updateTransaction } = useTransactions();
-    const { categories, paymentMethods, loading: optionsLoading } = useOptions();
+const SORT_LABELS: { [K in SortKey]: string } = {
+    'date-desc': '日期（新到舊）',
+    'date-asc': '日期（舊到新）',
+    'amount-desc': '金額（高到低）',
+    'amount-asc': '金額（低到高）',
+};
 
-    const [isNewTxOpen, setIsNewTxOpen] = useState(false);
-    const [selectedTx, setSelectedTx] = useState<DbRecord | null>(null);
-    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [isTxMenuOpen, setIsTxMenuOpen] = useState(false);
-    const [editingTx, setEditingTx] = useState<DbRecord | null>(null);
+export default function RecordList({ timeFilter, filterCategory = '', onFilterCategoryChange }: RecordListProps) {
+    const { records, categories, paymentMethods, loading, error } = useData();
+    const { openNew, openDetail } = useRecordUI();
+    const lookup = useMemo(() => buildLookup(categories, paymentMethods), [categories, paymentMethods]);
 
-    // Filter State
     const [isFilterOpen, setIsFilterOpen] = useState(false);
+    const [isSortOpen, setIsSortOpen] = useState(false);
+    const [type, setType] = useState<'' | RecordType>('');
+    const [accountId, setAccountId] = useState('');
+    const [minAmount, setMinAmount] = useState('');
+    const [maxAmount, setMaxAmount] = useState('');
+    const [sort, setSort] = useState<SortKey>('date-desc');
 
-    // Derived state
-    const totalExpense = useMemo(() => {
-        return filteredTxsForSummary().reduce((sum, tx) => sum + Number(tx.amount), 0);
+    const filters: RecordFilters = {
+        start: timeFilter.start, end: timeFilter.end, query: '',
+        type, categoryId: filterCategory, accountId, minAmount, maxAmount,
+    };
+    const activeFilterCount = [type, filterCategory, accountId, minAmount, maxAmount].filter(Boolean).length;
+
+    const filtered = useMemo(
+        () => sortRecords(filterRecords(records, filters, categories), sort),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [transactions, timeFilter, filterCategory]);
+        [records, categories, sort, timeFilter.start, timeFilter.end, type, filterCategory, accountId, minAmount, maxAmount],
+    );
+    const totals = useMemo(() => periodTotals(filtered), [filtered]);
 
-    function filteredTxsForSummary() {
-        return transactions.filter(tx =>
-            tx.type === 'expense' &&
-            tx.date >= timeFilter.start &&
-            tx.date <= timeFilter.end &&
-            (!filterCategory || tx.category_id === filterCategory)
-        );
-    }
-
-    const filteredTxs = useMemo(() => {
-        return transactions.filter(tx => {
-            const matchTime = tx.date >= timeFilter.start && tx.date <= timeFilter.end;
-            const matchCat = !filterCategory || tx.category_id === filterCategory;
-            let matchSearch = true;
-            if (searchQuery) {
-                const q = searchQuery.toLowerCase();
-                const cat = categories.find(c => c.id === tx.category_id);
-                matchSearch =
-                    (!!tx.description && tx.description.toLowerCase().includes(q)) ||
-                    (cat?.name?.toLowerCase() || '').includes(q) ||
-                    String(tx.amount).includes(searchQuery);
-            }
-            return matchTime && matchCat && matchSearch;
-        });
-    }, [transactions, timeFilter, filterCategory, searchQuery, categories]);
-
-    const groupedTransactions = useMemo(() => {
-        const groups: Record<string, typeof transactions> = {};
-        filteredTxs.forEach(tx => {
-            if (!groups[tx.date]) groups[tx.date] = [];
-            groups[tx.date].push(tx);
-        });
-        return groups;
-    }, [filteredTxs]);
-
-    const sortedDates = useMemo(() => {
-        return Object.keys(groupedTransactions).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-    }, [groupedTransactions]);
-
-    const getDayOfWeek = (dateStr: string) => {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const date = new Date(y, m - 1, d);
-        const days = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
-        return days[date.getDay()];
-    };
-
-    const formatDateHeader = (dateStr: string) => {
-        const [y, m, d] = dateStr.split('-').map(Number);
-        return `${y}年${m}月${d}日 ${getDayOfWeek(dateStr)}`;
-    };
-
-    const handleSave = async (record: Omit<DbRecord, 'id' | 'user_id'>) => {
-        if (editingTx) {
-            await updateTransaction(editingTx.id, record);
-        } else {
-            await addTransaction(record);
+    const groups = useMemo(() => {
+        if (!sort.startsWith('date')) return null;
+        const map = new Map<string, typeof filtered>();
+        for (const r of filtered) {
+            const list = map.get(r.date);
+            if (list) list.push(r);
+            else map.set(r.date, [r]);
         }
+        return [...map.entries()];
+    }, [filtered, sort]);
+
+    const clearFilters = () => {
+        setType(''); setAccountId(''); setMinAmount(''); setMaxAmount('');
+        onFilterCategoryChange?.('');
     };
+
+    const visibleCategories = categories.filter(c => !type || type === 'transfer' || (c.type ?? 'expense') === type);
+    const inputClass = 'w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm appearance-none';
 
     return (
-        <div className="pb-24 animate-in fade-in duration-300 pt-20 px-4">
+        <div className="pb-28 animate-in fade-in duration-300 pt-20 px-4">
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold text-white">交易</h1>
-                <button
-                    onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className={`p-2 rounded-full transition-colors ${isFilterOpen || filterCategory ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-zinc-400'}`}
-                >
-                    <Filter size={20} />
-                </button>
+                <div className="flex gap-2">
+                    <div className="relative">
+                        <button onClick={() => setIsSortOpen(o => !o)} aria-label="排序" className="p-2 rounded-full bg-zinc-800 text-zinc-300">
+                            <ArrowUpDown size={20} />
+                        </button>
+                        {isSortOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setIsSortOpen(false)} />
+                                <div className="absolute right-0 top-full mt-2 w-44 bg-zinc-800 rounded-xl shadow-xl overflow-hidden z-50">
+                                    {(Object.keys(SORT_LABELS) as SortKey[]).map(k => (
+                                        <button key={k} onClick={() => { setSort(k); setIsSortOpen(false); }} className={`w-full text-left px-4 py-3 text-sm hover:bg-zinc-700 ${sort === k ? 'text-emerald-400' : 'text-white'}`}>
+                                            {SORT_LABELS[k]}
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                    <button
+                        onClick={() => setIsFilterOpen(o => !o)}
+                        aria-label="篩選"
+                        aria-expanded={isFilterOpen}
+                        className={`p-2 rounded-full transition-colors relative ${isFilterOpen || activeFilterCount ? 'bg-emerald-400 text-black' : 'bg-zinc-800 text-zinc-300'}`}
+                    >
+                        <SlidersHorizontal size={20} />
+                        {activeFilterCount > 0 && !isFilterOpen && (
+                            <span className="absolute -top-1 -right-1 bg-white text-black text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{activeFilterCount}</span>
+                        )}
+                    </button>
+                </div>
             </div>
 
             {isFilterOpen && (
-                <div className="bg-zinc-900 rounded-2xl p-4 mb-6 animate-in slide-in-from-top-4">
-                    <div className="space-y-4">
-                        <div>
-                            <label className="text-xs text-zinc-500 mb-1 block">分類</label>
-                            <select value={filterCategory} onChange={e => onFilterCategoryChange?.(e.target.value)} className="w-full bg-zinc-800 text-white p-2 rounded-xl outline-none text-sm appearance-none">
+                <Card className="p-4 mb-6 space-y-3 animate-in slide-in-from-top-4">
+                    <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                            <span className="text-xs text-zinc-500 mb-1 block">類型</span>
+                            <select value={type} onChange={e => setType(e.target.value as '' | RecordType)} className={inputClass}>
                                 <option value="">全部</option>
-                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                <option value="expense">支出</option>
+                                <option value="income">收入</option>
+                                <option value="transfer">轉帳</option>
                             </select>
-                        </div>
+                        </label>
+                        <label className="block">
+                            <span className="text-xs text-zinc-500 mb-1 block">帳戶</span>
+                            <select value={accountId} onChange={e => setAccountId(e.target.value)} className={inputClass}>
+                                <option value="">全部</option>
+                                {paymentMethods.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            </select>
+                        </label>
                     </div>
-                    {filterCategory && (
-                        <button onClick={() => { onFilterCategoryChange?.(''); }} className="mt-3 text-xs text-red-400 font-medium">
-                            清除篩選
-                        </button>
+                    {type !== 'transfer' && (
+                        <label className="block">
+                            <span className="text-xs text-zinc-500 mb-1 block">分類</span>
+                            <select value={filterCategory} onChange={e => onFilterCategoryChange?.(e.target.value)} className={inputClass}>
+                                <option value="">全部</option>
+                                {visibleCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                        </label>
                     )}
-                </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <label className="block">
+                            <span className="text-xs text-zinc-500 mb-1 block">最低金額</span>
+                            <input type="number" inputMode="decimal" value={minAmount} onChange={e => setMinAmount(e.target.value)} className={inputClass} placeholder="不限" />
+                        </label>
+                        <label className="block">
+                            <span className="text-xs text-zinc-500 mb-1 block">最高金額</span>
+                            <input type="number" inputMode="decimal" value={maxAmount} onChange={e => setMaxAmount(e.target.value)} className={inputClass} placeholder="不限" />
+                        </label>
+                    </div>
+                    {activeFilterCount > 0 && (
+                        <button onClick={clearFilters} className="text-xs text-red-400 font-medium">清除篩選</button>
+                    )}
+                </Card>
             )}
 
-            {/* Expense Summary Card */}
-            <div className="mb-8">
-                <div className="bg-zinc-900 rounded-3xl p-5 flex items-center justify-between">
-                    <div>
-                        <p className="text-zinc-400 text-sm mb-1">總支出</p>
-                        <p className="text-3xl font-bold text-red-500">-{formatCurrency(totalExpense)}</p>
-                    </div>
+            <Card className="p-5 mb-8 grid grid-cols-3 gap-2">
+                <div>
+                    <p className="text-zinc-400 text-xs mb-1">收入</p>
+                    <p className="text-emerald-400 font-bold truncate">{formatCurrency(totals.income)}</p>
                 </div>
-            </div>
+                <div>
+                    <p className="text-zinc-400 text-xs mb-1">支出</p>
+                    <p className="text-red-400 font-bold truncate">{formatCurrency(totals.expense)}</p>
+                </div>
+                <div className="text-right">
+                    <p className="text-zinc-400 text-xs mb-1">結餘</p>
+                    <p className={`font-bold truncate ${totals.net < 0 ? 'text-red-400' : 'text-white'}`}>{formatCurrency(totals.net)}</p>
+                </div>
+            </Card>
 
-            {/* Transaction List */}
-            <div className="space-y-8">
-                {sortedDates.map(date => {
-                    const dailyTxs = groupedTransactions[date];
-                    const dailyTotal = dailyTxs
-                        .filter(tx => tx.type === 'expense')
-                        .reduce((sum, tx) => sum + Number(tx.amount), 0);
+            {error && <p className="text-red-400 text-sm mb-4" role="alert">{error}</p>}
+            {loading && records.length === 0 && <p className="text-center text-zinc-500 py-10">載入中…</p>}
 
-                    return (
-                        <div key={date}>
-                            <h3 className="text-white font-bold text-lg mb-3 ml-1">{formatDateHeader(date)}</h3>
-                            <div className="bg-zinc-900 rounded-3xl overflow-hidden">
-                                {dailyTxs.map((tx, idx) => {
-                                    const cat = categories.find(c => c.id === tx.category_id);
-                                    const payMethod = paymentMethods.find(p => p.id === tx.payment_method_id);
-                                    return (
-                                        <div
-                                            key={tx.id}
-                                            onClick={() => setSelectedTx(tx)}
-                                            className={`flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-800/50 transition-colors ${idx !== dailyTxs.length - 1 ? 'border-b border-zinc-800' : ''}`}
-                                        >
-                                            <div className="flex items-center space-x-4">
-                                                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-zinc-800 text-zinc-400" style={{ color: cat?.color }}>
-                                                    {IconMap[cat?.icon || 'Wallet'] || <Wallet size={20} />}
-                                                </div>
-                                                <div>
-                                                    <p className="text-white font-medium text-base">{tx.description || cat?.name || '未分類'}</p>
-                                                    <div className="flex items-center text-zinc-500 text-xs mt-0.5">
-                                                        <span>{cat?.name || '無類別'}</span>
-                                                        {tx.time && <span className="mx-1">• {tx.time}</span>}
-                                                        {payMethod && <span className="mx-1">• {payMethod.name}</span>}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className={tx.type === 'expense' ? 'text-red-500 font-bold' : 'text-emerald-500 font-bold'}>
-                                                    {tx.type === 'expense' ? '-' : '+'}{formatCurrency(tx.amount, tx.currency_code)}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+            {groups ? (
+                <div className="space-y-8">
+                    {groups.map(([date, list]) => {
+                        const day = periodTotals(list);
+                        return (
+                            <div key={date}>
+                                <div className="flex justify-between items-baseline mb-3 mx-1">
+                                    <h3 className="text-white font-bold">{formatDateHeader(date)}</h3>
+                                    <span className="text-sm text-zinc-500">
+                                        {day.expense > 0 && <span className="text-red-400">-{formatCurrency(day.expense)}</span>}
+                                        {day.expense > 0 && day.income > 0 && ' / '}
+                                        {day.income > 0 && <span className="text-emerald-400">+{formatCurrency(day.income)}</span>}
+                                    </span>
+                                </div>
+                                <Card className="overflow-hidden">
+                                    {list.map((r, i) => (
+                                        <RecordRow key={r.id} record={r} lookup={lookup} onClick={() => openDetail(r)} last={i === list.length - 1} />
+                                    ))}
+                                </Card>
                             </div>
-                            <div className="mt-2 text-right px-2">
-                                <span className="text-zinc-500 text-sm mr-2">總計:</span>
-                                <span className="text-red-500 font-bold">-{formatCurrency(dailyTotal)}</span>
-                            </div>
-                        </div>
-                    );
-                })}
-                {sortedDates.length === 0 && <div className="text-center text-zinc-500 py-10">沒有符合條件的交易紀錄</div>}
-            </div>
+                        );
+                    })}
+                </div>
+            ) : filtered.length > 0 && (
+                <Card className="overflow-hidden">
+                    {filtered.map((r, i) => (
+                        <RecordRow key={r.id} record={r} lookup={lookup} onClick={() => openDetail(r)} showDate last={i === filtered.length - 1} />
+                    ))}
+                </Card>
+            )}
+            {!loading && filtered.length === 0 && <div className="text-center text-zinc-500 py-10">沒有符合條件的交易紀錄</div>}
 
-            {/* Floating Add Button */}
             <button
-                onClick={() => {
-                    if (categories.length === 0 || paymentMethods.length === 0) {
-                        alert('請先到「設定」建立分類與支付方式');
-                        return;
-                    }
-                    setEditingTx(null);
-                    setIsNewTxOpen(true);
-                }}
+                onClick={() => openNew(accountId || undefined)}
                 aria-label="新增交易"
-                disabled={optionsLoading}
-                className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20 text-black hover:scale-105 transition-transform z-40 disabled:opacity-50"
+                className="fixed bottom-24 right-4 w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center shadow-lg shadow-emerald-500/20 text-black hover:scale-105 transition-transform z-40"
             >
                 <Plus size={24} />
             </button>
-
-            <RecordForm
-                isOpen={isNewTxOpen}
-                onClose={() => setIsNewTxOpen(false)}
-                categories={categories}
-                paymentMethods={paymentMethods}
-                editingRecord={editingTx}
-                onSave={handleSave}
-            />
-
-            {/* Transaction Detail Modal */}
-            {selectedTx && (
-                <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in slide-in-from-bottom-10">
-                    <div className="flex justify-between items-center px-4 pt-8 pb-4">
-                        <button onClick={() => setSelectedTx(null)} className="bg-zinc-800 text-zinc-300 p-2 rounded-full">
-                            <X size={20} />
-                        </button>
-                        <h2 className="text-lg font-bold text-white">交易詳情</h2>
-                        <div className="relative">
-                            <button onClick={() => setIsTxMenuOpen(!isTxMenuOpen)} className="bg-zinc-800 text-zinc-300 p-2 rounded-full">
-                                <MoreHorizontal size={20} />
-                            </button>
-                            {isTxMenuOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setIsTxMenuOpen(false)}></div>
-                                    <div className="absolute right-0 top-full mt-2 w-32 bg-zinc-800 rounded-xl shadow-xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
-                                        <button onClick={() => { setEditingTx(selectedTx); setIsNewTxOpen(true); setSelectedTx(null); setIsTxMenuOpen(false); }} className="w-full text-left px-4 py-3 text-white hover:bg-zinc-700 flex items-center">
-                                            <Edit2 size={16} className="mr-2" /> 編輯
-                                        </button>
-                                        <button onClick={() => { setShowDeleteConfirm(true); setIsTxMenuOpen(false); }} className="w-full text-left px-4 py-3 text-red-400 hover:bg-zinc-700 flex items-center">
-                                            <Trash2 size={16} className="mr-2" /> 刪除
-                                        </button>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                    <div className="p-6 flex flex-col items-center">
-                        <div className={selectedTx.type === 'expense' ? 'text-red-500 text-5xl font-bold mb-2' : 'text-emerald-500 text-5xl font-bold mb-2'}>
-                            {selectedTx.type === 'expense' ? '-' : '+'}{formatCurrency(selectedTx.amount, selectedTx.currency_code)}
-                        </div>
-                        <div className="text-zinc-400 mb-8">{selectedTx.description || '無備註'}</div>
-                        <div className="w-full bg-zinc-900 rounded-3xl overflow-hidden">
-                            <div className="flex items-center p-4 border-b border-zinc-800">
-                                <div className="bg-blue-500/20 text-blue-500 p-2 rounded-xl mr-4"><LayoutGrid size={20} /></div>
-                                <div><p className="text-zinc-500 text-xs">分類</p><p className="text-white font-medium">{categories.find(c => c.id === selectedTx.category_id)?.name}</p></div>
-                            </div>
-                            <div className="flex items-center p-4 border-b border-zinc-800">
-                                <div className="bg-orange-500/20 text-orange-500 p-2 rounded-xl mr-4"><Calendar size={20} /></div>
-                                <div><p className="text-zinc-500 text-xs">日期</p><p className="text-white font-medium">{selectedTx.date} {selectedTx.time}</p></div>
-                            </div>
-                            <div className="flex items-center p-4">
-                                <div className="bg-red-500/20 text-red-500 p-2 rounded-xl mr-4"><MapPin size={20} /></div>
-                                <div><p className="text-zinc-500 text-xs">地點</p><p className="text-white font-medium">{selectedTx.location || '未設定'}</p></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Delete Confirmation Modal */}
-            {showDeleteConfirm && (
-                <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-6 animate-in fade-in">
-                    <div className="bg-zinc-900 rounded-3xl w-full max-w-xs p-6 text-center">
-                        <h3 className="text-white font-bold text-lg mb-2">確定要刪除這筆交易嗎？</h3>
-                        <p className="text-zinc-400 text-sm mb-6">此動作無法復原。</p>
-                        <div className="flex space-x-3">
-                            <button onClick={() => setShowDeleteConfirm(false)} className="flex-1 py-3 rounded-xl bg-zinc-800 text-white font-medium">取消</button>
-                            <button onClick={() => { deleteTransaction(selectedTx!.id); setShowDeleteConfirm(false); setSelectedTx(null); }} className="flex-1 py-3 rounded-xl bg-red-500 text-white font-bold">刪除交易</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

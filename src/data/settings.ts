@@ -7,34 +7,24 @@ export const SettingsService = {
             .from('user_settings')
             .select('*')
             .eq('user_id', userId)
-            .single();
-
-        // RLS might throw PGRST116 if no rows exist, which is normal for first login
-        if (error && error.code !== 'PGRST116') {
-            console.error('Error fetching settings:', error);
-            return null;
-        }
+            .maybeSingle();
+        if (error) throw error;
         return data;
     },
 
-    async updateSettings(userId: string, settings: Partial<UserSettings>) {
+    async updateSettings(userId: string, settings: Partial<UserSettings>): Promise<UserSettings> {
         const { data, error } = await supabase
             .from('user_settings')
             .upsert({ user_id: userId, ...settings })
             .select()
             .single();
-
-        if (error) {
-            console.error('Error updating settings:', error);
-            throw error;
-        }
+        if (error) throw error;
         return data;
     },
 
-    async initializeSettingsIfMissing(userId: string) {
+    async getOrCreateSettings(userId: string): Promise<UserSettings> {
         const existing = await this.getSettings(userId);
-        if (!existing) {
-            await this.updateSettings(userId, { default_currency: 'TWD', budget_reset_day: 1 });
-        }
-    }
+        if (existing) return existing;
+        return this.updateSettings(userId, { default_currency: 'TWD', budget_reset_day: 1 });
+    },
 };

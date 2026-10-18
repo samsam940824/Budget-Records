@@ -25,13 +25,18 @@ This repository is intentionally small and readable — it's meant to be forkabl
 
 ## Features
 
-- **Auth** — Supabase email/password sign-up & sign-in.
-- **Transactions** — Add / edit / delete expense and income records with category, payment method, location, note, currency.
-- **Budgets** — Per-category budgets with `none / daily / weekly / monthly / yearly` repeat, and a configurable monthly reset day.
-- **Overview** — Total income / expense / balance, category pie chart, average daily spend (correctly scaled to the selected date range).
-- **Global time filter** — Month / Year / Custom range, applied across overview, records, and budgets.
-- **Search** — Full-text search across description and amount.
-- **Settings** — Manage categories and payment methods, default currency, budget reset day.
+- **Auth** — Supabase email/password sign-in.
+- **Transactions** — Expenses, income and transfers between accounts, with category, account, date, optional time, location, note and currency.
+- **Accounts** — Cash, bank, card and wallet accounts with opening balances, live balances, net worth, assets vs. debts, archiving and a per-account history.
+- **Recurring transactions** — Daily, weekly, monthly or yearly (every N periods), with optional end date. Missed occurrences are filled in when the app opens; rules can be paused, resumed, edited or deleted.
+- **Budgets** — Per-category or all-expense budgets with `none / daily / weekly / monthly / yearly` repeat and a configurable monthly reset day.
+- **Configurable dashboard** — Show, hide and reorder widgets: income/expense summary, accounts & net worth, category breakdown (pie or bar, expense or income), spending trend, budget progress, upcoming recurring items and recent transactions. The layout syncs across devices.
+- **Search, filter and sort** — Search all time by note, category, location or amount; filter by type, category, account and amount range; sort by date or amount.
+- **Categories** — Separate expense and income categories, each with an icon or emoji and a colour, reorderable.
+- **CSV import / export** — Export everything as UTF-8 CSV (opens in Excel). Import CSVs with English or Chinese headers; signed bank-style amounts are understood and missing categories/accounts are created.
+- **Passcode lock** — Optional 4-digit app lock stored (hashed) on the device, with a configurable auto-lock delay.
+- **Light / dark / system theme.**
+- **Installable PWA** — Add to home screen, offline app shell, and a "new transaction" home-screen shortcut.
 - **Optimistic UI** — Add / edit / delete reflect immediately and roll back on failure.
 - **Static deploy** — Builds to a static bundle, auto-deployed to GitHub Pages from `main`.
 
@@ -80,7 +85,7 @@ npm install
 ### 2. Configure Supabase
 
 1. Create a new project at https://supabase.com.
-2. In the SQL editor, run [`supabase/migrations/0000_schema.sql`](./supabase/migrations/0000_schema.sql). This creates all tables and enables Row Level Security so users only see their own data.
+2. In the SQL editor, run [`supabase/migrations/0000_schema.sql`](./supabase/migrations/0000_schema.sql), then [`supabase/migrations/0001_accounts_recurring_dashboard.sql`](./supabase/migrations/0001_accounts_recurring_dashboard.sql). Together they create all tables and enable Row Level Security so users only see their own data.
 3. In **Authentication → Providers**, enable Email (and optionally disable email confirmation while developing).
 4. Copy your project URL and anon key from **Settings → API**.
 
@@ -104,6 +109,7 @@ The anon key is safe to expose to the browser **as long as RLS is enabled** (the
 ```bash
 npm run dev      # http://localhost:3000
 npm run lint     # type-check (tsc --noEmit)
+npm test         # unit tests (vitest)
 npm run build    # production build into dist/
 npm run preview  # serve the production build locally
 ```
@@ -114,13 +120,18 @@ All tables live in the `public` schema and are owned by `auth.users(id)` via `us
 
 | Table | Purpose | Key columns |
 |---|---|---|
-| `user_settings` | Per-user prefs | `default_currency`, `budget_reset_day` |
-| `categories` | Expense / income categories | `name`, `icon`, `color`, `sort_order` |
-| `payment_methods` | Cash / cards / wallets | `name`, `icon`, `sort_order` |
-| `records` | Transactions | `type` (`expense\|income`), `amount`, `category_id`, `date`, `time`, `description`, `currency_code`, `location`, `payment_method_id` |
-| `budgets` | Recurring budgets | `category_id`, `amount`, `repeat` (`none\|daily\|weekly\|monthly\|yearly`), `start_date`, `end_date` |
+| `user_settings` | Per-user prefs | `default_currency`, `budget_reset_day`, `dashboard_widgets` |
+| `categories` | Expense / income categories | `name`, `type` (`expense\|income`), `icon`, `color`, `sort_order` |
+| `payment_methods` | Accounts (cash / bank / cards / wallets) | `name`, `icon`, `color`, `initial_balance`, `currency_code`, `include_in_total`, `archived`, `sort_order` |
+| `records` | Transactions | `type` (`expense\|income\|transfer`), `amount`, `category_id`, `date`, `time`, `description`, `currency_code`, `location`, `payment_method_id`, `to_payment_method_id`, `recurring_id` |
+| `budgets` | Recurring budgets | `category_id` (null = all expenses), `amount`, `repeat` (`none\|daily\|weekly\|monthly\|yearly`), `start_date`, `end_date` |
+| `recurring_transactions` | Recurring rules | `type`, `amount`, `category_id`, `payment_method_id`, `to_payment_method_id`, `frequency`, `interval_count`, `start_date`, `end_date`, `next_date`, `active` |
 
-Full schema and RLS policies: [`supabase/migrations/0000_schema.sql`](./supabase/migrations/0000_schema.sql).
+Full schema and RLS policies: [`supabase/migrations/`](./supabase/migrations/).
+
+### Upgrading an existing project
+
+If your Supabase project was created before accounts and recurring transactions existed, run [`supabase/migrations/0001_accounts_recurring_dashboard.sql`](./supabase/migrations/0001_accounts_recurring_dashboard.sql) once in the SQL editor **before** deploying this version. It only adds columns, a table and constraints; existing data is kept, existing payment methods become accounts with a zero opening balance, and existing categories become expense categories. The app shows a banner pointing to this file if it is missing.
 
 ## Deployment
 
@@ -136,12 +147,12 @@ The repo ships with a GitHub Actions workflow at `.github/workflows/` that build
 
 Tracked as open issues — see [Issues](https://github.com/samsam940824/Budget-Records/issues). Headline items:
 
-- [ ] Export transactions to CSV
-- [ ] PWA / offline mode
+- [x] Export transactions to CSV (and import)
+- [x] PWA install and offline app shell (data still needs a connection)
 - [ ] Multi-currency support with FX rates
 - [ ] Budget threshold notifications
 - [ ] Documented Supabase RLS hardening guide
-- [ ] Unit + component test coverage
+- [ ] Component test coverage (core logic has unit tests)
 
 ## Contributing
 
