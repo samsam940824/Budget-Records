@@ -40,6 +40,10 @@ export const newAccountDefaults = (name: string, sort_order: number): NewAccount
     sort_order,
 });
 
+// Concurrent loads (StrictMode double effects, overlapping refreshes) must
+// share one seeding run, or each would insert its own copy of the defaults.
+const seedingByUser = new Map<string, Promise<void>>();
+
 export const OptionsService = {
     async getCategories(userId: string): Promise<Category[]> {
         const { data, error } = await supabase.from('categories').select('*').eq('user_id', userId).order('sort_order');
@@ -92,24 +96,34 @@ export const OptionsService = {
      * for users who signed up before income categories existed, unless they
      * already record income under some category.
      */
-    async initializeDefaultsIfMissing(userId: string, hasIncomeRecords: boolean) {
+    initializeDefaultsIfMissing(userId: string, hasIncomeRecords: boolean): Promise<void> {
+        const inFlight = seedingByUser.get(userId);
+        if (inFlight) return inFlight;
+        const run = this.seedDefaults(userId, hasIncomeRecords).finally(() => seedingByUser.delete(userId));
+        seedingByUser.set(userId, run);
+        return run;
+    },
+
+    async seedDefaults(userId: string, hasIncomeRecords: boolean) {
         const [cats, pays] = await Promise.all([
             this.getCategories(userId),
             this.getPaymentMethods(userId),
         ]);
 
-        const toInsert: NewCategory[] = [];
-        if (cats.length === 0) toInsert.push(...DEFAULT_EXPENSE_CATEGORIES);
-        if (!cats.some(c => c.type === 'income') && !hasIncomeRecords) toInsert.push(...DEFAULT_INCOME_CATEGORIES);
+        const candidates: NewCategory[] = [];
+        if (cats.length === 0) candidates.push(...DEFAULT_EXPENSE_CATEGORIES);
+        if (!cats.some(c => c.type === 'income') && !hasIncomeRecords) candidates.push(...DEFAULT_INCOME_CATEGORIES);
+        // Plain insert of missing names: older databases may lack the
+        // UNIQUE(user_id, name) constraint that ON CONFLICT would need.
+        const existingNames = new Set(cats.map(c => c.name));
+        const toInsert = candidates.filter(c => !existingNames.has(c.name));
         if (toInsert.length > 0) {
-            await supabase
-                .from('categories')
-                .upsert(toInsert.map(c => ({ ...c, user_id: userId })), { onConflict: 'user_id,name', ignoreDuplicates: true });
+            const { error } = await supabase.from('categories').insert(toInsert.map(c => ({ ...c, user_id: userId })));
+            if (error) throw error;
         }
         if (pays.length === 0) {
-            await supabase
-                .from('payment_methods')
-                .upsert(DEFAULT_ACCOUNTS.map(p => ({ ...p, user_id: userId })), { onConflict: 'user_id,name', ignoreDuplicates: true });
+            const { error } = await supabase.from('payment_methods').insert(DEFAULT_ACCOUNTS.map(p => ({ ...p, user_id: userId })));
+            if (error) throw error;
         }
     },
 };
