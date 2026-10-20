@@ -29,6 +29,8 @@ export const QuickEntryService = {
 
     /** Replaces any existing token; the plain value is returned only here. */
     async createToken(userId: string): Promise<string> {
+        // Browsers expose crypto.subtle only on HTTPS (and localhost).
+        if (!globalThis.crypto?.subtle) throw new Error('需要 HTTPS 連線才能產生 token，請用正式網站操作');
         const token = generateToken();
         const { error } = await supabase
             .from('quick_entry_tokens')
