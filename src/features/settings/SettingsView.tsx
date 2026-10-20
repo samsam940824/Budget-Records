@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogOut, User, Wallet, ChevronRight, LayoutGrid, Calendar, Coins, Repeat, FileSpreadsheet, Lock, SunMoon } from 'lucide-react';
+import { LogOut, User, Wallet, ChevronRight, LayoutGrid, Calendar, Coins, Repeat, FileSpreadsheet, Lock, SunMoon, Zap } from 'lucide-react';
 import { useData } from '../../data/DataContext';
 import { supabase } from '../../lib/supabaseClient';
 import { getLockConfig } from '../../lib/lock';
@@ -9,8 +9,9 @@ import CategoryManager from './CategoryManager';
 import RecurringManager from './RecurringManager';
 import ImportExport from './ImportExport';
 import PasscodeSettings from './PasscodeSettings';
+import QuickEntrySettings from './QuickEntrySettings';
 
-type Section = 'main' | 'categories' | 'recurring' | 'data' | 'lock';
+type Section = 'main' | 'categories' | 'recurring' | 'data' | 'lock' | 'quick';
 
 function NavRow({ icon, tint, label, detail, onClick }: { icon: React.ReactNode; tint: string; label: string; detail?: string; onClick: () => void }) {
     return (
@@ -49,6 +50,7 @@ export default function SettingsView({ onOpenAccounts }: { onOpenAccounts: () =>
     if (section === 'recurring') return <RecurringManager onBack={back} />;
     if (section === 'data') return <ImportExport onBack={back} />;
     if (section === 'lock') return <PasscodeSettings onBack={back} />;
+    if (section === 'quick') return <QuickEntrySettings onBack={back} />;
 
     const selectClass = 'bg-zinc-800 text-white p-2 rounded-xl text-sm outline-none cursor-pointer';
 
@@ -73,6 +75,7 @@ export default function SettingsView({ onOpenAccounts }: { onOpenAccounts: () =>
                 <NavRow icon={<Wallet size={20} />} tint="bg-blue-500/20 text-blue-500" label="帳戶" detail={`${paymentMethods.length} 個`} onClick={onOpenAccounts} />
                 <NavRow icon={<Repeat size={20} />} tint="bg-pink-500/20 text-pink-500" label="定期交易" detail={`${recurring.filter(r => r.active).length} 個進行中`} onClick={() => setSection('recurring')} />
                 <NavRow icon={<FileSpreadsheet size={20} />} tint="bg-teal-500/20 text-teal-500" label="匯入與匯出 CSV" detail={`${records.length} 筆`} onClick={() => setSection('data')} />
+                <NavRow icon={<Zap size={20} />} tint="bg-amber-500/20 text-amber-500" label="快速記帳捷徑" onClick={() => setSection('quick')} />
 
                 <h2 className="text-zinc-400 font-bold ml-2 pt-4">偏好設定</h2>
                 <SelectRow icon={<Coins size={20} />} tint="bg-purple-500/20 text-purple-500" label="預設幣別">
