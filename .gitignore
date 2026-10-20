@@ -28,3 +28,6 @@ coverage/
 *.suo
 *.sln
 *.sw?
+
+# Supabase CLI cache
+supabase/.temp/
