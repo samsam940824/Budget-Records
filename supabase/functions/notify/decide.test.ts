@@ -83,12 +83,12 @@ describe('③ different sources, one purchase', () => {
 
     it('a card notice arriving after LINE Pay absorbs the waiting LINE Pay event', () => {
         const pending: PendingEvent[] = [
-            { id: 'e-linepay', source: 'linepay', kind: 'expense', amount: 40, occurredAt: new Date('2026-11-07T12:00:00+08:00') },
-            { id: 'e-other-card', source: 'esun_card', kind: 'expense', amount: 40, occurredAt: new Date('2026-11-07T12:00:00+08:00') },
-            { id: 'e-old', source: 'wallet', kind: 'expense', amount: 40, occurredAt: new Date('2026-11-07T11:00:00+08:00') },
+            { id: 'e-linepay', source: 'linepay', kind: 'expense', amount: 40, merchant: '50嵐', occurredAt: new Date('2026-11-07T12:00:00+08:00') },
+            { id: 'e-other-card', source: 'esun_card', kind: 'expense', amount: 40, merchant: null, occurredAt: new Date('2026-11-07T12:00:00+08:00') },
+            { id: 'e-old', source: 'wallet', kind: 'expense', amount: 40, merchant: null, occurredAt: new Date('2026-11-07T11:00:00+08:00') },
         ];
         const decision = decide(event('esun_card', 40, '12:01'), ctx({ pending }));
-        expect(decision).toMatchObject({ action: 'record', mergePendingIds: ['e-linepay'] });
+        expect(decision).toMatchObject({ action: 'record', record: { description: '50嵐' }, mergePendingIds: ['e-linepay'] });
     });
 });
 

@@ -39,6 +39,7 @@ export interface PendingEvent {
     source: string;
     kind: EventKind | null;
     amount: number | null;
+    merchant: string | null;
     occurredAt: Date;
 }
 
@@ -114,14 +115,14 @@ export function findMergeTarget(event: ParsedEvent, accountId: string | null, ca
  * LINE Pay notice waiting for an account when the card notice arrives. They
  * are merged into the record the new event creates, one per source.
  */
-export function findPendingPartners(event: ParsedEvent, pending: PendingEvent[]): string[] {
-    const bySource = new Map<string, { id: string; gap: number }>();
+export function findPendingPartners(event: ParsedEvent, pending: PendingEvent[]): PendingEvent[] {
+    const bySource = new Map<string, { partner: PendingEvent; gap: number }>();
     for (const p of pending) {
         if (p.source === event.source || p.kind !== event.kind || p.amount !== event.amount) continue;
         const gap = Math.abs(p.occurredAt.getTime() - event.occurredAt.getTime());
         if (gap > NOTIFICATION_MERGE_WINDOW_MS) continue;
         const best = bySource.get(p.source);
-        if (!best || gap < best.gap) bySource.set(p.source, { id: p.id, gap });
+        if (!best || gap < best.gap) bySource.set(p.source, { partner: p, gap });
     }
-    return [...bySource.values()].map(v => v.id);
+    return [...bySource.values()].map(v => v.partner);
 }

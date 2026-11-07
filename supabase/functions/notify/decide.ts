@@ -121,12 +121,15 @@ export function decide(event: ParsedEvent, ctx: DecisionContext): Decision {
 
     const account = ctx.accounts.find(a => a.id === accountId)!;
     const { date, time } = localDateTime(event.occurredAt);
+    const partners = findPendingPartners(event, ctx.pending);
+    // A waiting LINE Pay / Apple Pay notice usually names the shop the card notice lacks.
+    const description = event.merchant ?? partners.find(p => p.merchant)?.merchant ?? '';
     return {
         action: 'record',
         record: {
             type, amount: event.amount, category_id: categoryId, payment_method_id: accountId,
-            description: event.merchant ?? '', currency_code: account.currency_code, date, time, source: 'notification',
+            description, currency_code: account.currency_code, date, time, source: 'notification',
         },
-        mergePendingIds: findPendingPartners(event, ctx.pending),
+        mergePendingIds: partners.map(p => p.id),
     };
 }
