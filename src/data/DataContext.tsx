@@ -1,19 +1,27 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import {
-    Budget, Category, PaymentMethod, Record, RecurringTransaction, UserSettings,
+    Budget, Category, NotificationEvent, PaymentMethod, Record, RecurringTransaction, UserSettings,
 } from '../types/database.types';
 import { RecordsService, NewRecord } from './records';
 import { OptionsService, NewCategory, NewAccount } from './options';
 import { BudgetsService } from './budgets';
 import { SettingsService } from './settings';
 import { RecurringService, NewRecurring } from './recurring';
+import { eventDateTime, InboxService } from './inbox';
 import { dueOccurrences } from '../lib/recurring';
 import { todayString } from '../lib/dates';
 import { ImportRow } from '../lib/csv';
 
 export type NewBudget = Omit<Budget, 'id' | 'user_id'>;
 export type NewRule = Omit<NewRecurring, 'next_date' | 'active'>;
+
+/** How the user filed a pending notification. */
+export interface EventResolution {
+    record: NewRecord;
+    /** Save the account (and merchant category) for next time. */
+    remember: boolean;
+}
 
 export interface ImportSummary {
     inserted: number;
@@ -31,12 +39,19 @@ interface DataContextValue {
     budgets: Budget[];
     settings: UserSettings | null;
     recurring: RecurringTransaction[];
+    pendingEvents: NotificationEvent[];
     refresh: () => Promise<void>;
+    refreshInbox: () => Promise<void>;
 
     addRecord: (record: NewRecord) => Promise<void>;
     updateRecord: (id: string, patch: Partial<Record>) => Promise<void>;
     deleteRecord: (id: string) => Promise<void>;
     importRecords: (rows: ImportRow[]) => Promise<ImportSummary>;
+
+    recordFromEvent: (event: NotificationEvent, resolution: EventResolution) => Promise<void>;
+    mergeEvent: (event: NotificationEvent, record: Record, remember: boolean) => Promise<void>;
+    ignoreEvent: (event: NotificationEvent) => Promise<void>;
+    splitEvent: (event: NotificationEvent, from: Record) => Promise<void>;
 
     addCategory: (c: NewCategory) => Promise<Category>;
     updateCategory: (id: string, patch: Partial<Category>) => Promise<void>;
@@ -77,6 +92,7 @@ export function DataProvider({ user, children }: { user: User; children: React.R
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [settings, setSettings] = useState<UserSettings | null>(null);
     const [recurring, setRecurring] = useState<RecurringTransaction[]>([]);
+    const [pendingEvents, setPendingEvents] = useState<NotificationEvent[]>([]);
 
     const recordsRef = useRef(records);
     recordsRef.current = records;
@@ -136,12 +152,13 @@ export function DataProvider({ user, children }: { user: User; children: React.R
         try {
             const recs = await RecordsService.getRecords(userId);
             await OptionsService.initializeDefaultsIfMissing(userId, recs.some(r => r.type === 'income'));
-            const [cats, pays, buds, sets, rules] = await Promise.all([
+            const [cats, pays, buds, sets, rules, pending] = await Promise.all([
                 OptionsService.getCategories(userId),
                 OptionsService.getPaymentMethods(userId),
                 BudgetsService.getBudgets(userId),
                 SettingsService.getOrCreateSettings(userId),
                 RecurringService.getRules(userId),
+                InboxService.listPending(userId),
             ]);
             setRecords(recs);
             setCategories(cats);
@@ -149,6 +166,7 @@ export function DataProvider({ user, children }: { user: User; children: React.R
             setBudgets(buds);
             setSettings(sets);
             setRecurring(rules);
+            setPendingEvents(pending);
             setError(null);
             await processRecurring(rules);
         } catch (err) {
@@ -160,6 +178,13 @@ export function DataProvider({ user, children }: { user: User; children: React.R
     }, [userId, processRecurring]);
 
     useEffect(() => { refresh(); }, [refresh]);
+
+    /** Reloads records and the review list, which the notify endpoint changes behind our back. */
+    const refreshInbox = useCallback(async () => {
+        const [recs, pending] = await Promise.all([RecordsService.getRecords(userId), InboxService.listPending(userId)]);
+        setRecords(recs);
+        setPendingEvents(pending);
+    }, [userId]);
 
     // A tab left open overnight catches up on recurring entries when it is shown again.
     const recurringRef = useRef(recurring);
@@ -207,6 +232,63 @@ export function DataProvider({ user, children }: { user: User; children: React.R
             setRecords(previous);
             throw err;
         }
+    }, [userId]);
+
+    // ---------- Notification review ----------
+
+    const dropPending = (id: string) => setPendingEvents(prev => prev.filter(e => e.id !== id));
+
+    const recordFromEvent = useCallback(async (event: NotificationEvent, { record, remember }: EventResolution) => {
+        const saved = await RecordsService.addRecord(userId, { ...record, source: 'notification' });
+        try {
+            await InboxService.resolve(userId, event.id, 'recorded', saved.id);
+        } catch (err) {
+            // Without the link the record would be re-entered later; undo it.
+            await RecordsService.deleteRecord(userId, saved.id);
+            throw err;
+        }
+        setRecords(prev => [saved, ...prev].sort(byDateDesc));
+        dropPending(event.id);
+        if (remember && record.payment_method_id) {
+            await InboxService.remember(userId, event, record.payment_method_id, record.category_id);
+        }
+    }, [userId]);
+
+    const mergeEvent = useCallback(async (event: NotificationEvent, record: Record, remember: boolean) => {
+        await InboxService.resolve(userId, event.id, 'merged', record.id);
+        dropPending(event.id);
+        if (!record.description && event.merchant) {
+            const saved = await RecordsService.updateRecord(userId, record.id, { description: event.merchant });
+            setRecords(prev => prev.map(r => (r.id === saved.id ? saved : r)));
+        }
+        if (remember && record.payment_method_id) {
+            await InboxService.remember(userId, event, record.payment_method_id, record.category_id);
+        }
+    }, [userId]);
+
+    const ignoreEvent = useCallback(async (event: NotificationEvent) => {
+        await InboxService.resolve(userId, event.id, 'ignored', null);
+        dropPending(event.id);
+    }, [userId]);
+
+    /** Undoes a wrong merge: the notification becomes its own record in the same account and category. */
+    const splitEvent = useCallback(async (event: NotificationEvent, from: Record) => {
+        const { date, time } = eventDateTime(event);
+        const saved = await RecordsService.addRecord(userId, {
+            type: from.type,
+            amount: Number(event.amount ?? from.amount),
+            category_id: from.category_id,
+            payment_method_id: from.payment_method_id,
+            to_payment_method_id: from.to_payment_method_id ?? null,
+            description: event.merchant ?? '',
+            location: '',
+            currency_code: event.currency_code,
+            date,
+            time,
+            source: 'notification',
+        });
+        await InboxService.resolve(userId, event.id, 'recorded', saved.id);
+        setRecords(prev => [saved, ...prev].sort(byDateDesc));
     }, [userId]);
 
     // ---------- Categories ----------
@@ -349,6 +431,7 @@ export function DataProvider({ user, children }: { user: User; children: React.R
                 currency_code: row.currency || settings?.default_currency || 'TWD',
                 date: row.date,
                 time: row.time,
+                source: 'import',
             });
         }
         const saved = await RecordsService.addRecords(userId, toInsert);
@@ -357,16 +440,18 @@ export function DataProvider({ user, children }: { user: User; children: React.R
     }, [categories, paymentMethods, settings, userId, refresh]);
 
     const value = useMemo<DataContextValue>(() => ({
-        user, loading, error, records, categories, paymentMethods, budgets, settings, recurring, refresh,
+        user, loading, error, records, categories, paymentMethods, budgets, settings, recurring, pendingEvents, refresh, refreshInbox,
         addRecord, updateRecord, deleteRecord, importRecords,
+        recordFromEvent, mergeEvent, ignoreEvent, splitEvent,
         addCategory, updateCategory, deleteCategory,
         addAccount, updateAccount, deleteAccount,
         addBudget, updateBudget, deleteBudget,
         updateSettings,
         addRecurring, updateRecurring, deleteRecurring,
     }), [
-        user, loading, error, records, categories, paymentMethods, budgets, settings, recurring, refresh,
+        user, loading, error, records, categories, paymentMethods, budgets, settings, recurring, pendingEvents, refresh, refreshInbox,
         addRecord, updateRecord, deleteRecord, importRecords,
+        recordFromEvent, mergeEvent, ignoreEvent, splitEvent,
         addCategory, updateCategory, deleteCategory,
         addAccount, updateAccount, deleteAccount,
         addBudget, updateBudget, deleteBudget,

@@ -1,8 +1,9 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { ChevronRight, Download, Upload, FileText } from 'lucide-react';
 import { useData, ImportSummary } from '../../data/DataContext';
 import { ImportPreview, previewImport, recordsToCsv } from '../../lib/csv';
 import { todayString } from '../../lib/dates';
+import { findImportDuplicates, IMPORT_MATCH_DAYS } from '../../lib/duplicates';
 import { Card } from '../../components/ui';
 import { formatCurrency } from '../../utils/helpers';
 
@@ -25,23 +26,43 @@ export default function ImportExport({ onBack }: { onBack: () => void }) {
     const [importing, setImporting] = useState(false);
     const [result, setResult] = useState<ImportSummary | null>(null);
     const [error, setError] = useState<string | null>(null);
+    /** Duplicate lines the user chose to import anyway. */
+    const [forced, setForced] = useState<Set<number>>(new Set());
+
+    const duplicates = useMemo(() => {
+        if (!preview) return new Map<number, string>();
+        const accountId = new Map(paymentMethods.map(a => [a.name.trim().toLowerCase(), a.id]));
+        const lookup = (name: string) => accountId.get(name.trim().toLowerCase()) ?? null;
+        return findImportDuplicates(preview.rows.map(r => ({
+            line: r.line, type: r.type, amount: r.amount, date: r.date,
+            accountId: lookup(r.accountName), toAccountId: lookup(r.toAccountName),
+        })), records);
+    }, [preview, paymentMethods, records]);
+    const toImport = preview?.rows.filter(r => !duplicates.has(r.line) || forced.has(r.line)) ?? [];
+
+    const toggleForced = (line: number) => setForced(prev => {
+        const next = new Set(prev);
+        if (next.has(line)) next.delete(line); else next.add(line);
+        return next;
+    });
 
     const onFile = async (file: File) => {
         setResult(null);
         setError(null);
         try {
             setPreview({ ...previewImport(await file.text()), fileName: file.name });
+            setForced(new Set());
         } catch (err) {
             setError(err instanceof Error ? err.message : '無法讀取檔案');
         }
     };
 
     const runImport = async () => {
-        if (!preview || preview.rows.length === 0) return;
+        if (toImport.length === 0) return;
         setImporting(true);
         setError(null);
         try {
-            setResult(await importRecords(preview.rows));
+            setResult(await importRecords(toImport));
             setPreview(null);
         } catch (err) {
             setError(err instanceof Error ? err.message : '匯入失敗');
@@ -50,7 +71,7 @@ export default function ImportExport({ onBack }: { onBack: () => void }) {
         }
     };
 
-    const previewTotal = preview?.rows.reduce((s, r) => s + (r.type === 'expense' ? -r.amount : r.type === 'income' ? r.amount : 0), 0) ?? 0;
+    const previewTotal = toImport.reduce((s, r) => s + (r.type === 'expense' ? -r.amount : r.type === 'income' ? r.amount : 0), 0);
 
     return (
         <div className="pb-28 animate-in fade-in duration-300 pt-20 px-4">
@@ -95,7 +116,22 @@ export default function ImportExport({ onBack }: { onBack: () => void }) {
                         <p className="text-red-400 text-sm">找不到必要欄位：{preview.missingColumns.map(c => (c === 'date' ? '日期' : '金額')).join('、')}</p>
                     ) : (
                         <>
-                            <p className="text-zinc-300 text-sm">可匯入 {preview.rows.length} 筆，收支合計 {formatCurrency(previewTotal)}。</p>
+                            <p className="text-zinc-300 text-sm">可匯入 {toImport.length} 筆，收支合計 {formatCurrency(previewTotal)}。</p>
+                            {duplicates.size > 0 && (
+                                <div className="text-sm">
+                                    <p className="text-sky-400 mb-1">{duplicates.size - forced.size} 筆已經在帳本裡（日期前後 {IMPORT_MATCH_DAYS} 天、金額和帳戶相同），會略過。要匯入的話請勾選：</p>
+                                    <ul className="text-zinc-400 text-xs space-y-1 max-h-40 overflow-y-auto">
+                                        {preview.rows.filter(r => duplicates.has(r.line)).map(r => (
+                                            <li key={r.line}>
+                                                <label className="flex items-center gap-2">
+                                                    <input type="checkbox" checked={forced.has(r.line)} onChange={() => toggleForced(r.line)} />
+                                                    第 {r.line} 列：{r.date} {r.accountName} {formatCurrency(r.amount)} {r.description}
+                                                </label>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
                             {preview.errors.length > 0 && (
                                 <div className="text-sm">
                                     <p className="text-amber-400 mb-1">{preview.errors.length} 列會被略過：</p>
@@ -106,8 +142,8 @@ export default function ImportExport({ onBack }: { onBack: () => void }) {
                             )}
                             <div className="flex gap-3 pt-1">
                                 <button onClick={() => setPreview(null)} className="flex-1 py-3 rounded-xl bg-zinc-800 text-white">取消</button>
-                                <button onClick={runImport} disabled={importing || preview.rows.length === 0} className="flex-1 py-3 rounded-xl bg-emerald-500 text-black font-bold disabled:opacity-40">
-                                    {importing ? '匯入中…' : `匯入 ${preview.rows.length} 筆`}
+                                <button onClick={runImport} disabled={importing || toImport.length === 0} className="flex-1 py-3 rounded-xl bg-emerald-500 text-black font-bold disabled:opacity-40">
+                                    {importing ? '匯入中…' : `匯入 ${toImport.length} 筆`}
                                 </button>
                             </div>
                         </>

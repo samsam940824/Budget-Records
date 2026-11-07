@@ -14,6 +14,15 @@ export type AutoEntryMode = 'auto' | 'review';
  */
 export type ReviewReason = 'unparsed' | 'unknown_account' | 'possible_replay' | 'ambiguous_match' | 'review_mode' | 'needs_purpose';
 
+export const REVIEW_REASON_LABELS: { [R in ReviewReason]: string } = {
+    unparsed: '看不懂的格式',
+    unknown_account: '需要選帳戶',
+    needs_purpose: '需要選用途',
+    possible_replay: '疑似重複送出',
+    ambiguous_match: '可能和既有記錄重複',
+    review_mode: '待確認模式',
+};
+
 export interface AccountRef {
     id: string;
     match_last4: string[];
@@ -70,7 +79,7 @@ const KIND_PREFIX = 'k:';
  * Key a remembered choice is stored under: the merchant when known, else the
  * kind of notification (e.g. every 玉山 card notice has no merchant).
  */
-export function ruleKey(event: ParsedEvent): string {
+export function ruleKey(event: Pick<ParsedEvent, 'merchant' | 'kind'>): string {
     const merchant = event.merchant?.trim().toLowerCase();
     return merchant ? MERCHANT_PREFIX + merchant : KIND_PREFIX + event.kind;
 }

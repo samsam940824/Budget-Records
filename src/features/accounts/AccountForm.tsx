@@ -15,6 +15,7 @@ export default function AccountForm({ account, onClose }: { account: PaymentMeth
     const [currency, setCurrency] = useState(account?.currency_code ?? settings?.default_currency ?? 'TWD');
     const [includeInTotal, setIncludeInTotal] = useState(account?.include_in_total ?? true);
     const [archived, setArchived] = useState(account?.archived ?? false);
+    const [last4Text, setLast4Text] = useState((account?.match_last4 ?? []).join(', '));
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
@@ -27,11 +28,13 @@ export default function AccountForm({ account, onClose }: { account: PaymentMeth
         if (paymentMethods.some(p => p.id !== account?.id && p.name.trim() === trimmed)) { setError('已有同名帳戶'); return; }
         const balance = initialBalance === '' ? 0 : Number(initialBalance);
         if (!Number.isFinite(balance)) { setError('期初餘額格式不正確'); return; }
+        const last4 = last4Text.split(/[\s,，、]+/).filter(Boolean);
+        if (last4.some(d => !/^\d{4}$/.test(d))) { setError('末四碼要是 4 位數字，多組用逗號分開'); return; }
         setSaving(true);
         setError(null);
         const fields = {
             name: trimmed, icon, color, initial_balance: balance, currency_code: currency,
-            include_in_total: includeInTotal, archived,
+            include_in_total: includeInTotal, archived, match_last4: [...new Set(last4)],
         };
         try {
             if (account) await updateAccount(account.id, fields);
@@ -65,6 +68,13 @@ export default function AccountForm({ account, onClose }: { account: PaymentMeth
                 </FieldRow>
             </Card>
             <p className="text-xs text-zinc-500 -mt-4 mb-6 px-1">信用卡可輸入負數表示目前欠款。</p>
+
+            <Card className="p-2 mb-6">
+                <FieldRow label="卡號／帳號末四碼" last>
+                    <input value={last4Text} onChange={e => setLast4Text(e.target.value)} inputMode="numeric" placeholder="例如 1234, 5678" className="bg-transparent text-white text-right w-full outline-none placeholder-zinc-600" aria-label="卡號或帳號末四碼" />
+                </FieldRow>
+            </Card>
+            <p className="text-xs text-zinc-500 -mt-4 mb-6 px-1">自動記帳時，通知裡的末四碼符合就記到這個帳戶。同一個帳戶有多張卡或多個帳號可以填多組。</p>
 
             <Card className="p-2 mb-6">
                 <FieldRow label="計入淨資產">

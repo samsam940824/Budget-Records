@@ -10,7 +10,7 @@
 
 import { authenticate, HttpError, json, readJsonObject, serve, supabase } from '../_shared/http.ts';
 import { sha256Hex } from '../quick-entry/logic.ts';
-import { decide } from './decide.ts';
+import { decide, REVIEW_REASON_LABELS } from './decide.ts';
 import { normalizeText, parseNotification } from './parsers.ts';
 import { applyDecision, eventBase, loadContext, Outcome, purgeRawText, storePending } from './store.ts';
 
@@ -18,15 +18,6 @@ const MAX_BODY_BYTES = 8192;
 const MAX_TEXT_LENGTH = 2000;
 const MAX_APP_LENGTH = 40;
 const UNKNOWN_SOURCE = 'unknown';
-
-const REASON_LABELS: { [reason: string]: string } = {
-    unparsed: '看不懂的格式',
-    unknown_account: '需要選帳戶',
-    needs_purpose: '需要選用途',
-    possible_replay: '疑似重複送出',
-    ambiguous_match: '可能和既有記錄重複',
-    review_mode: '待確認模式',
-};
 
 function readInput(input: { [key: string]: unknown }): { text: string; app: string | null } {
     const text = typeof input.text === 'string' ? input.text.trim() : '';
@@ -40,7 +31,7 @@ function describe(outcome: Outcome): string {
     switch (outcome.status) {
         case 'recorded': return '已自動記帳';
         case 'merged': return '已合併到既有記錄';
-        case 'pending': return `已放入待確認（${REASON_LABELS[outcome.reason]}）`;
+        case 'pending': return `已放入待確認（${REVIEW_REASON_LABELS[outcome.reason]}）`;
     }
 }
 

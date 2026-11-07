@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, Clock, MapPin, Repeat, Flag, Wallet, ArrowRight, Coins } from 'lucide-react';
+import { Calendar, Clock, MapPin, Repeat, Flag, Wallet, ArrowRight, Coins, CopyPlus } from 'lucide-react';
 import { Record as DbRecord, RecordType, RepeatFrequency } from '../../types/database.types';
 import { useData } from '../../data/DataContext';
 import { NewRecord } from '../../data/records';
 import { IconTile } from '../../components/AppIcon';
-import { FieldRow, Segmented, Sheet, Toggle, selectClass, Card, SectionTitle } from '../../components/ui';
+import { ConfirmDialog, FieldRow, Segmented, Sheet, Toggle, selectClass, Card, SectionTitle } from '../../components/ui';
 import { CURRENCIES } from '../../utils/helpers';
 import { todayString } from '../../lib/dates';
 import { FREQUENCY_LABELS } from '../../lib/recurring';
+import { findLikelyAutoDuplicate } from '../../lib/duplicates';
 
 interface RecordFormProps {
     onClose: () => void;
@@ -19,7 +20,7 @@ interface RecordFormProps {
 type RepeatChoice = 'none' | RepeatFrequency;
 
 export default function RecordForm({ onClose, editingRecord, defaultAccountId }: RecordFormProps) {
-    const { categories, paymentMethods, settings, addRecord, updateRecord, addRecurring } = useData();
+    const { records, categories, paymentMethods, settings, addRecord, updateRecord, addRecurring } = useData();
     const accounts = useMemo(() => paymentMethods.filter(a => !a.archived || a.id === editingRecord?.payment_method_id || a.id === editingRecord?.to_payment_method_id), [paymentMethods, editingRecord]);
     const defaultCurrency = settings?.default_currency || 'TWD';
 
@@ -38,6 +39,8 @@ export default function RecordForm({ onClose, editingRecord, defaultAccountId }:
     const [repeatEvery, setRepeatEvery] = useState(1);
     const [hasEnd, setHasEnd] = useState(false);
     const [endDate, setEndDate] = useState('');
+    const [isDistinct, setIsDistinct] = useState(editingRecord?.is_distinct ?? false);
+    const [possibleDuplicate, setPossibleDuplicate] = useState<DbRecord | null>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -66,7 +69,7 @@ export default function RecordForm({ onClose, editingRecord, defaultAccountId }:
         : hasEnd && repeat !== 'none' && endDate && endDate < date ? '結束日期早於開始日期'
         : null;
 
-    const handleSubmit = async () => {
+    const handleSubmit = async (confirmedNotDuplicate = false) => {
         if (problem) { setError(problem); return; }
         setSaving(true);
         setError(null);
@@ -81,7 +84,13 @@ export default function RecordForm({ onClose, editingRecord, defaultAccountId }:
             location: location.trim(),
             date,
             time: isTimeEnabled ? time : null,
+            is_distinct: isDistinct,
         };
+        // A manual entry repeating an automatic one is the most common duplicate; ask first.
+        if (!editingRecord && repeat === 'none' && !isDistinct && !confirmedNotDuplicate) {
+            const duplicate = findLikelyAutoDuplicate(record, records);
+            if (duplicate) { setPossibleDuplicate(duplicate); setSaving(false); return; }
+        }
         try {
             if (editingRecord) {
                 await updateRecord(editingRecord.id, record);
@@ -116,7 +125,7 @@ export default function RecordForm({ onClose, editingRecord, defaultAccountId }:
         <Sheet
             title={editingRecord ? '編輯交易' : '新交易'}
             onClose={onClose}
-            action={{ label: saving ? '儲存中…' : '儲存', onClick: handleSubmit, disabled: saving }}
+            action={{ label: saving ? '儲存中…' : '儲存', onClick: () => handleSubmit(), disabled: saving }}
         >
             <div className="mt-2 mb-4">
                 <Segmented<RecordType>
@@ -254,10 +263,24 @@ export default function RecordForm({ onClose, editingRecord, defaultAccountId }:
                 <FieldRow icon={<MapPin size={20} className="text-red-500" />} label="地點">
                     <input type="text" value={location} onChange={e => setLocation(e.target.value)} className="bg-transparent text-white text-right w-full outline-none placeholder-zinc-600" placeholder="輸入地點…" aria-label="地點" />
                 </FieldRow>
+                <FieldRow icon={<CopyPlus size={20} className="text-sky-400" />} label="這是另一筆">
+                    <Toggle checked={isDistinct} onChange={setIsDistinct} label="這是另一筆，不要自動合併" />
+                </FieldRow>
                 <div className="p-3">
                     <textarea value={note} onChange={e => setNote(e.target.value)} className="w-full bg-transparent outline-none text-white resize-none h-20 placeholder-zinc-600" placeholder="輸入備註…" aria-label="備註" />
                 </div>
             </Card>
+            <p className="text-xs text-zinc-500 -mt-4 mb-6 px-1">打開「這是另一筆」後，自動記帳不會把通知合併進這筆，適合故意記兩筆同樣金額的消費。</p>
+            {possibleDuplicate && (
+                <ConfirmDialog
+                    title="可能已經自動記過了"
+                    message={`${possibleDuplicate.date}${possibleDuplicate.time ? ` ${possibleDuplicate.time.slice(0, 5)}` : ''} 已有一筆自動記帳的 $${Number(possibleDuplicate.amount).toLocaleString()}${possibleDuplicate.description ? `（${possibleDuplicate.description}）` : ''}。仍要新增嗎？`}
+                    confirmLabel="仍要新增"
+                    danger={false}
+                    onCancel={() => setPossibleDuplicate(null)}
+                    onConfirm={() => { setPossibleDuplicate(null); handleSubmit(true); }}
+                />
+            )}
         </Sheet>
     );
 }

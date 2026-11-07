@@ -1,11 +1,84 @@
-import React, { useState } from 'react';
-import { Calendar, LayoutGrid, MapPin, MoreHorizontal, Edit2, Trash2, Wallet, ArrowRight, Repeat, X } from 'lucide-react';
-import { Record as DbRecord } from '../../types/database.types';
+import React, { useEffect, useState } from 'react';
+import { Calendar, LayoutGrid, MapPin, MoreHorizontal, Edit2, Trash2, Wallet, ArrowRight, Repeat, X, Bell, Unlink } from 'lucide-react';
+import { NotificationEvent, Record as DbRecord, RecordSource } from '../../types/database.types';
+import { eventDateTime, InboxService, sourceLabel } from '../../data/inbox';
 import { useData } from '../../data/DataContext';
 import { amountColor, formatDateHeader, formatSigned } from '../../utils/helpers';
 import { ConfirmDialog } from '../../components/ui';
 import { buildLookup } from './RecordRow';
 import { describeSchedule } from '../../lib/recurring';
+
+const SOURCE_NAMES: { [S in RecordSource]: string } = {
+    manual: '手動記帳',
+    quick_entry: '快速記帳捷徑',
+    notification: '自動記帳',
+    import: 'CSV 匯入',
+};
+
+/** Where the record came from and which notifications were merged into it. */
+function SourceSection({ record }: { record: DbRecord }) {
+    const { user, splitEvent } = useData();
+    const [events, setEvents] = useState<NotificationEvent[]>([]);
+    const [splitting, setSplitting] = useState<NotificationEvent | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        InboxService.listForRecord(user.id, record.id)
+            .then(list => { if (active) setEvents(list); })
+            .catch(err => { if (active) setError(err instanceof Error ? err.message : '讀取來源失敗'); });
+        return () => { active = false; };
+    }, [user.id, record.id]);
+
+    const names = [SOURCE_NAMES[record.source ?? 'manual'], ...events.map(e => sourceLabel(e.source))];
+    const merged = events.filter(e => e.status === 'merged');
+    return (
+        <div className="w-full bg-zinc-900 rounded-3xl overflow-hidden mt-4">
+            <div className="flex items-center p-4 border-b border-zinc-800">
+                <div className="bg-sky-500/20 text-sky-400 p-2 rounded-xl mr-4"><Bell size={20} /></div>
+                <div>
+                    <p className="text-zinc-500 text-xs">來源</p>
+                    <p className="text-white font-medium">{[...new Set(names)].join(' ＋ ')}</p>
+                    {record.is_distinct && <p className="text-zinc-500 text-xs mt-0.5">已標記為另一筆，不會被自動合併</p>}
+                </div>
+            </div>
+            {merged.map(e => {
+                const { date, time } = eventDateTime(e);
+                return (
+                    <div key={e.id} className="flex items-center justify-between p-4 border-b border-zinc-800 last:border-b-0">
+                        <div className="min-w-0">
+                            <p className="text-white text-sm truncate">已合併：{sourceLabel(e.source)}{e.merchant ? `・${e.merchant}` : ''}</p>
+                            <p className="text-zinc-500 text-xs">{date} {time}</p>
+                        </div>
+                        <button onClick={() => setSplitting(e)} className="shrink-0 text-amber-400 text-sm flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-500/10">
+                            <Unlink size={14} /> 拆開
+                        </button>
+                    </div>
+                );
+            })}
+            {error && <p className="text-red-400 text-sm p-4" role="alert">{error}</p>}
+            {splitting && (
+                <ConfirmDialog
+                    title="拆成兩筆？"
+                    message="這則通知會另外記成一筆，帳戶和分類跟這筆相同，之後可以再編輯。"
+                    confirmLabel="拆開"
+                    danger={false}
+                    onCancel={() => setSplitting(null)}
+                    onConfirm={async () => {
+                        const target = splitting;
+                        setSplitting(null);
+                        try {
+                            await splitEvent(target, record);
+                            setEvents(prev => prev.filter(e => e.id !== target.id));
+                        } catch (err) {
+                            setError(err instanceof Error ? err.message : '拆開失敗');
+                        }
+                    }}
+                />
+            )}
+        </div>
+    );
+}
 
 export default function RecordDetail({ record, onClose, onEdit }: { record: DbRecord; onClose: () => void; onEdit: (r: DbRecord) => void }) {
     const { categories, paymentMethods, recurring, deleteRecord } = useData();
@@ -68,6 +141,7 @@ export default function RecordDetail({ record, onClose, onEdit }: { record: DbRe
                         </div>
                     ))}
                 </div>
+                <SourceSection record={record} />
             </div>
             {confirm && (
                 <ConfirmDialog

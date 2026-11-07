@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { User } from '@supabase/supabase-js';
-import { Search, Settings, X, ChevronRight, LayoutGrid, List, PiggyBank, Wallet, AlertTriangle } from 'lucide-react';
+import { Search, Settings, X, ChevronRight, LayoutGrid, List, PiggyBank, Wallet, AlertTriangle, Bell } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import Login from './features/auth/Login';
 import RecordList from './features/records/RecordList';
@@ -9,6 +9,7 @@ import SettingsView from './features/settings/SettingsView';
 import Overview from './features/overview/Overview';
 import AccountsView from './features/accounts/AccountsView';
 import LockScreen from './features/security/LockScreen';
+import InboxView from './features/inbox/InboxView';
 import { DataProvider, useData } from './data/DataContext';
 import { RecordUIProvider, useRecordUI } from './features/records/RecordUI';
 import RecordRow, { buildLookup } from './features/records/RecordRow';
@@ -88,7 +89,7 @@ const looksLikeMissingMigration = (msg: string | null) =>
     !!msg && /(does not exist|schema cache|Could not find the .* column|recurring_transactions)/i.test(msg);
 
 function MainApp() {
-    const { records, categories, paymentMethods, error } = useData();
+    const { records, categories, paymentMethods, pendingEvents, error } = useData();
     const { openNew, openDetail } = useRecordUI();
     const lookup = useMemo(() => buildLookup(categories, paymentMethods), [categories, paymentMethods]);
 
@@ -105,6 +106,7 @@ function MainApp() {
     const [customStart, setCustomStart] = useState('');
     const [customEnd, setCustomEnd] = useState('');
     const [isSearchOpen, setIsSearchOpen] = useState(false);
+    const [isInboxOpen, setIsInboxOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategoryId, setSelectedCategoryId] = useState('');
 
@@ -171,9 +173,19 @@ function MainApp() {
                             {timeFilter.label} <ChevronRight size={14} className="ml-1 rotate-90" />
                         </button>
                     ) : <span />}
-                    <button onClick={() => setIsSearchOpen(true)} aria-label="搜尋" className="bg-zinc-800 text-zinc-300 p-2 rounded-full hover:bg-zinc-700 active:scale-95 transition-all">
-                        <Search size={20} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => setIsInboxOpen(true)} aria-label={`待確認 ${pendingEvents.length} 筆`} className="relative bg-zinc-800 text-zinc-300 p-2 rounded-full hover:bg-zinc-700 active:scale-95 transition-all">
+                            <Bell size={20} />
+                            {pendingEvents.length > 0 && (
+                                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                                    {pendingEvents.length > 99 ? '99+' : pendingEvents.length}
+                                </span>
+                            )}
+                        </button>
+                        <button onClick={() => setIsSearchOpen(true)} aria-label="搜尋" className="bg-zinc-800 text-zinc-300 p-2 rounded-full hover:bg-zinc-700 active:scale-95 transition-all">
+                            <Search size={20} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -307,6 +319,8 @@ function MainApp() {
                     </div>
                 </div>
             )}
+
+            {isInboxOpen && <InboxView onClose={() => setIsInboxOpen(false)} />}
 
             {isSearchOpen && (
                 <div className="fixed inset-0 bg-black z-50 flex flex-col animate-in slide-in-from-bottom-10 max-w-md mx-auto" role="dialog" aria-label="搜尋">
