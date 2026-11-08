@@ -72,8 +72,8 @@ export type Decision =
     | { action: 'merge'; recordId: string; fill: { description?: string } }
     | { action: 'record'; record: NewRecord; mergePendingIds: string[] };
 
-const MERCHANT_PREFIX = 'm:';
-const KIND_PREFIX = 'k:';
+export const MERCHANT_PREFIX = 'm:';
+export const KIND_PREFIX = 'k:';
 
 /**
  * Key a remembered choice is stored under: the merchant when known, else the

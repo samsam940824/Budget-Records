@@ -1,10 +1,78 @@
-import React from 'react';
-import { ChevronRight } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ChevronRight, Trash2 } from 'lucide-react';
 import { AutoEntryMode } from '../../types/database.types';
 import { useData } from '../../data/DataContext';
-import { Card, Segmented, SectionTitle } from '../../components/ui';
+import { InboxService, sourceLabel } from '../../data/inbox';
+import { AutoEntryRule, ruleKeyLabel } from '../../lib/autoEntryRules';
+import { Card, ConfirmDialog, Segmented, SectionTitle } from '../../components/ui';
 
 const NOTIFY_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/notify`;
+
+/** Remembered choices, each removable so the next matching notification asks again. */
+function RememberedRules() {
+    const { user, paymentMethods, categories } = useData();
+    const [rules, setRules] = useState<AutoEntryRule[] | null>(null);
+    const [deleting, setDeleting] = useState<AutoEntryRule | null>(null);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        let active = true;
+        InboxService.listRules(user.id)
+            .then(list => { if (active) setRules(list); })
+            .catch(err => { if (active) setError(err instanceof Error ? err.message : '讀取失敗'); });
+        return () => { active = false; };
+    }, [user.id]);
+
+    const nameOf = (list: { id: string; name: string }[], id: string | null) => list.find(item => item.id === id)?.name;
+
+    const remove = async (rule: AutoEntryRule) => {
+        setDeleting(null);
+        setError(null);
+        try {
+            await InboxService.deleteRule(user.id, rule.id);
+            setRules(prev => prev?.filter(r => r.id !== rule.id) ?? null);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : '刪除失敗');
+        }
+    };
+
+    return (
+        <>
+            <SectionTitle>已記住的選擇</SectionTitle>
+            <Card className="mb-2 overflow-hidden">
+                {error && <p className="text-red-400 text-sm p-4" role="alert">{error}</p>}
+                {!error && rules === null && <p className="text-zinc-500 text-sm p-4">讀取中…</p>}
+                {rules?.length === 0 && <p className="text-zinc-500 text-sm p-4">還沒有記住任何選擇。在待確認裡打開「記住這個選擇」就會出現在這裡。</p>}
+                {rules?.map(rule => {
+                    const category = nameOf(categories, rule.category_id);
+                    return (
+                        <div key={rule.id} className="flex items-center justify-between p-4 border-b border-zinc-800 last:border-b-0">
+                            <div className="min-w-0">
+                                <p className="text-white text-sm truncate">{sourceLabel(rule.source)}・{ruleKeyLabel(rule.match_key)}</p>
+                                <p className="text-zinc-500 text-xs">
+                                    帳戶：{nameOf(paymentMethods, rule.payment_method_id) ?? '（已刪除）'}{category ? `・分類：${category}` : ''}
+                                </p>
+                            </div>
+                            <button onClick={() => setDeleting(rule)} aria-label="刪除這個選擇" className="shrink-0 text-red-400 p-2 rounded-lg bg-red-500/10">
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    );
+                })}
+            </Card>
+            <p className="text-zinc-500 text-xs mb-6 px-1">刪除後，下次同樣的通知會再放進待確認問你。已經記好的帳不會被改動。</p>
+            {deleting && (
+                <ConfirmDialog
+                    title="刪除這個選擇？"
+                    message={`${sourceLabel(deleting.source)}・${ruleKeyLabel(deleting.match_key)}`}
+                    confirmLabel="刪除"
+                    onCancel={() => setDeleting(null)}
+                    onConfirm={() => remove(deleting)}
+                />
+            )}
+        </>
+    );
+}
 
 export default function AutoEntrySettings({ onBack, onOpenQuickEntry }: { onBack: () => void; onOpenQuickEntry: () => void }) {
     const { settings, updateSettings, pendingEvents } = useData();
@@ -30,6 +98,8 @@ export default function AutoEntrySettings({ onBack, onOpenQuickEntry }: { onBack
                 </p>
                 <p className="text-zinc-500 text-xs">目前待確認：{pendingEvents.length} 筆（右上角鈴鐺）</p>
             </Card>
+
+            <RememberedRules />
 
             <SectionTitle>避免重複記帳</SectionTitle>
             <Card className="p-4 mb-6">

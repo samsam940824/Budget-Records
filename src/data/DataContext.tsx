@@ -8,6 +8,7 @@ import { OptionsService, NewCategory, NewAccount } from './options';
 import { BudgetsService } from './budgets';
 import { SettingsService } from './settings';
 import { RecurringService, NewRecurring } from './recurring';
+import { rememberedAccountId } from '../lib/autoEntryRules';
 import { eventDateTime, InboxService } from './inbox';
 import { dueOccurrences } from '../lib/recurring';
 import { todayString } from '../lib/dates';
@@ -249,9 +250,8 @@ export function DataProvider({ user, children }: { user: User; children: React.R
         }
         setRecords(prev => [saved, ...prev].sort(byDateDesc));
         dropPending(event.id);
-        if (remember && record.payment_method_id) {
-            await InboxService.remember(userId, event, record.payment_method_id, record.category_id);
-        }
+        const accountId = event.kind ? rememberedAccountId(event.kind, record) : null;
+        if (remember && accountId) await InboxService.remember(userId, event, accountId, record.category_id);
     }, [userId]);
 
     const mergeEvent = useCallback(async (event: NotificationEvent, record: Record, remember: boolean) => {
@@ -261,9 +261,8 @@ export function DataProvider({ user, children }: { user: User; children: React.R
             const saved = await RecordsService.updateRecord(userId, record.id, { description: event.merchant });
             setRecords(prev => prev.map(r => (r.id === saved.id ? saved : r)));
         }
-        if (remember && record.payment_method_id) {
-            await InboxService.remember(userId, event, record.payment_method_id, record.category_id);
-        }
+        const accountId = event.kind ? rememberedAccountId(event.kind, record) : null;
+        if (remember && accountId) await InboxService.remember(userId, event, accountId, record.category_id);
     }, [userId]);
 
     const ignoreEvent = useCallback(async (event: NotificationEvent) => {

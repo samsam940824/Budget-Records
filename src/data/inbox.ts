@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabaseClient';
 import { NotificationEvent } from '../types/database.types';
 import { localDateTime } from '../../supabase/functions/quick-entry/logic';
 import { REVIEW_REASON_LABELS, ReviewReason, ruleKey } from '../../supabase/functions/notify/decide';
+import { AutoEntryRule } from '../lib/autoEntryRules';
 
 const UNIQUE_VIOLATION = '23505';
 
@@ -84,6 +85,21 @@ export const InboxService = {
             category_id: event.merchant ? categoryId : null,
             updated_at: new Date().toISOString(),
         }, { onConflict: 'user_id,source,match_key' });
+        if (error) throw error;
+    },
+
+    async listRules(userId: string): Promise<AutoEntryRule[]> {
+        const { data, error } = await supabase
+            .from('auto_entry_rules')
+            .select('id, source, match_key, payment_method_id, category_id, hit_count, updated_at')
+            .eq('user_id', userId)
+            .order('updated_at', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    },
+
+    async deleteRule(userId: string, ruleId: string) {
+        const { error } = await supabase.from('auto_entry_rules').delete().eq('user_id', userId).eq('id', ruleId);
         if (error) throw error;
     },
 };

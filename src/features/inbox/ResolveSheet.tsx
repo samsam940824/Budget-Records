@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowRight, Calendar, Clock, LayoutGrid, Wallet } from 'lucide-react';
-import { NotificationEvent, NotificationKind, Record as DbRecord, RecordType } from '../../types/database.types';
+import { Category, NotificationEvent, NotificationKind, PaymentMethod, Record as DbRecord, RecordType } from '../../types/database.types';
 import { useData } from '../../data/DataContext';
 import { eventDateTime, reasonLabel, sourceLabel } from '../../data/inbox';
 import { Card, FieldRow, Segmented, SectionTitle, Sheet, Toggle, selectClass } from '../../components/ui';
 import RecordRow, { buildLookup } from '../records/RecordRow';
 import { formatCurrency } from '../../utils/helpers';
+import { previewRemember, RememberPreview, rememberedAccountId } from '../../lib/autoEntryRules';
 
 type Mode = 'record' | 'merge';
 
@@ -19,6 +20,17 @@ const DEFAULT_TYPE: { [K in NotificationKind]: RecordType } = {
 };
 
 const canRemember = (e: NotificationEvent) => !!e.kind && e.source !== 'unknown' && !e.source.startsWith('app:');
+
+type Choice = Pick<DbRecord, 'type' | 'payment_method_id' | 'to_payment_method_id' | 'category_id'>;
+
+/** What remembering `choice` will do, or null until an account is picked. */
+function rememberPreviewFor(event: NotificationEvent, choice: Choice | undefined, accounts: PaymentMethod[], categories: Category[]): RememberPreview | null {
+    if (!event.kind || !choice) return null;
+    const account = accounts.find(a => a.id === rememberedAccountId(event.kind!, choice));
+    if (!account) return null;
+    const category = categories.find(c => c.id === choice.category_id);
+    return previewRemember({ kind: event.kind, merchant: event.merchant }, sourceLabel(event.source), account.name, category);
+}
 
 function useMergeCandidates(event: NotificationEvent, date: string): DbRecord[] {
     const { records } = useData();
@@ -55,6 +67,10 @@ export default function ResolveSheet({ event, onClose }: { event: NotificationEv
     const candidates = useMergeCandidates(event, initial.date);
     const typeCategories = categories.filter(c => c.type === (type === 'income' ? 'income' : 'expense'));
     const numericAmount = Number(amount);
+    const choice: Choice | undefined = mode === 'merge'
+        ? candidates.find(r => r.id === mergeTarget)
+        : { type, payment_method_id: accountId || null, to_payment_method_id: toAccountId || null, category_id: type === 'transfer' ? null : categoryId || null };
+    const preview = rememberPreviewFor(event, choice, paymentMethods, categories);
 
     const problem = mode === 'merge'
         ? (mergeTarget ? null : '請選擇要合併的記錄')
@@ -185,9 +201,8 @@ export default function ResolveSheet({ event, onClose }: { event: NotificationEv
                 </Card>
             )}
             {canRemember(event) && (
-                <p className="text-xs text-zinc-500 mb-6 px-1">
-                    {event.merchant ? `下次「${event.merchant}」的通知會自動記到同一個帳戶和分類。` : `下次${sourceLabel(event.source)}會自動記到同一個帳戶。`}
-                    {event.kind === 'transfer_out' || event.kind === 'transfer_in' ? '帳戶異動的用途每次不同，仍會請你確認用途。' : ''}
+                <p className={`text-xs mb-6 px-1 ${remember && preview?.warn ? 'text-amber-400' : 'text-zinc-500'}`}>
+                    {!remember ? '不會記住，下次同樣的通知還是會問你。' : preview ? preview.text : '選好帳戶後，這裡會說明記住之後會怎麼記。'}
                 </p>
             )}
 
