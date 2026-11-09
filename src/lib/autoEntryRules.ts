@@ -80,5 +80,6 @@ export function previewRemember(
         return { text: `之後${subject}都會自動記成${direction}「${stored.name}」，記到「${accountName}」，不會再問你。`, warn: true };
     }
     const categoryText = stored ? `，分類「${stored.name}」` : '，分類要自己補';
-    return { text: `之後${subject}會自動記到「${accountName}」${categoryText}。`, warn: false };
+    const others = event.merchant ? `${sourceName}其他店家的${KIND_LABELS[event.kind]}也會記到這個帳戶。` : '';
+    return { text: `之後${subject}會自動記到「${accountName}」${categoryText}。${others}`, warn: false };
 }

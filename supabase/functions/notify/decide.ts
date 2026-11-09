@@ -51,14 +51,17 @@ export interface DecisionContext {
     candidates: CandidateRecord[];
     /** Unresolved events from the last few minutes. */
     pending: PendingEvent[];
+    /** For a bank debit: cards with an unpaid purchase of the same amount. */
+    unpaidCardAccounts: string[];
     isReplay: boolean;
 }
 
 export interface NewRecord {
-    type: 'expense' | 'income';
+    type: 'expense' | 'income' | 'transfer';
     amount: number;
     category_id: string | null;
     payment_method_id: string;
+    to_payment_method_id: string | null;
     description: string;
     currency_code: string;
     date: string;
@@ -92,12 +95,14 @@ export function ruleKey(event: Pick<ParsedEvent, 'merchant' | 'kind'>): string {
 export function resolveAccount(event: ParsedEvent, accounts: AccountRef[], rules: Rule[]): { accountId: string | null; categoryId: string | null } {
     const open = accounts.filter(a => !a.archived);
     const key = ruleKey(event);
-    const rule = rules.find(r => r.source === event.source && r.match_key === key);
+    const find = (matchKey: string) => rules.find(r => r.source === event.source && r.match_key === matchKey);
+    // A new shop or parking lot falls back to the account last used for this source.
+    const rule = find(key) ?? find(KIND_PREFIX + event.kind);
     const byLast4 = event.last4 ? open.find(a => a.match_last4.includes(event.last4!)) : undefined;
     const ruleAccount = open.find(a => a.id === rule?.payment_method_id);
     return {
         accountId: byLast4?.id ?? ruleAccount?.id ?? null,
-        categoryId: key.startsWith(MERCHANT_PREFIX) ? rule?.category_id ?? null : null,
+        categoryId: key.startsWith(MERCHANT_PREFIX) && rule?.match_key === key ? rule.category_id ?? null : null,
     };
 }
 
@@ -124,21 +129,43 @@ export function decide(event: ParsedEvent, ctx: DecisionContext): Decision {
     if (match.kind === 'ambiguous') return { action: 'review', reason: 'ambiguous_match', accountId };
 
     const type = recordType(event, ctx.categories.find(c => c.id === categoryId));
-    if (type === null) return { action: 'review', reason: 'needs_purpose', accountId };
+    if (type === null) {
+        const card = cardPaid(event, accountId, ctx.unpaidCardAccounts);
+        if (card === null) return { action: 'review', reason: 'needs_purpose', accountId };
+        if (ctx.mode === 'review') return { action: 'review', reason: 'review_mode', accountId };
+        return recordDecision(event, ctx, accountId!, { type: 'transfer', category_id: null, to_payment_method_id: card, description: '' });
+    }
     if (accountId === null) return { action: 'review', reason: 'unknown_account', accountId };
     if (ctx.mode === 'review') return { action: 'review', reason: 'review_mode', accountId };
 
-    const account = ctx.accounts.find(a => a.id === accountId)!;
-    const { date, time } = localDateTime(event.occurredAt);
     const partners = findPendingPartners(event, ctx.pending);
     // A waiting LINE Pay / Apple Pay notice usually names the shop the card notice lacks.
     const description = event.merchant ?? partners.find(p => p.merchant)?.merchant ?? '';
+    return recordDecision(event, ctx, accountId, { type, category_id: categoryId, to_payment_method_id: null, description }, partners);
+}
+
+/**
+ * The card a bank debit pays: exactly one other card has an unpaid purchase
+ * of this amount. Needs the debited account, so the transfer has both ends.
+ */
+function cardPaid(event: ParsedEvent, accountId: string | null, unpaid: string[]): string | null {
+    if (event.kind !== 'transfer_out' || accountId === null) return null;
+    const cards = unpaid.filter(id => id !== accountId);
+    return cards.length === 1 ? cards[0] : null;
+}
+
+function recordDecision(
+    event: ParsedEvent,
+    ctx: DecisionContext,
+    accountId: string,
+    fields: Pick<NewRecord, 'type' | 'category_id' | 'to_payment_method_id' | 'description'>,
+    partners: PendingEvent[] = [],
+): Decision {
+    const account = ctx.accounts.find(a => a.id === accountId)!;
+    const { date, time } = localDateTime(event.occurredAt);
     return {
         action: 'record',
-        record: {
-            type, amount: event.amount, category_id: categoryId, payment_method_id: accountId,
-            description, currency_code: account.currency_code, date, time, source: 'notification',
-        },
+        record: { ...fields, amount: event.amount, payment_method_id: accountId, currency_code: account.currency_code, date, time, source: 'notification' },
         mergePendingIds: partners.map(p => p.id),
     };
 }

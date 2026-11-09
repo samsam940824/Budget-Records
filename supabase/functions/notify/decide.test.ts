@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { AccountRef, decide, DecisionContext, ruleKey } from './decide';
-import { CandidateRecord, findMergeTarget, isPossibleReplay, PendingEvent } from './matching';
+import { CandidateRecord, findMergeTarget, isPossibleReplay, PendingEvent, unpaidCardAccounts } from './matching';
 import type { ParsedEvent } from './parsers';
 
 const ESUN_CARD = 'acc-esun-card';
@@ -35,7 +35,7 @@ const notified = (id: string, amount: number, time: string, source: string, extr
 const esunCardRule = { source: 'esun_card', match_key: 'k:expense', payment_method_id: ESUN_CARD, category_id: null };
 
 function ctx(overrides: Partial<DecisionContext> = {}): DecisionContext {
-    return { mode: 'auto', accounts, categories: [], rules: [esunCardRule], candidates: [], pending: [], isReplay: false, ...overrides };
+    return { mode: 'auto', accounts, categories: [], rules: [esunCardRule], candidates: [], pending: [], unpaidCardAccounts: [], isReplay: false, ...overrides };
 }
 
 describe('① same source, different notifications', () => {
@@ -181,5 +181,48 @@ describe('accounts, categories and modes', () => {
 
     it('review mode holds even fully resolved events', () => {
         expect(decide(event('esun_card', 59, '10:00'), ctx({ mode: 'review' }))).toMatchObject({ action: 'review', reason: 'review_mode' });
+    });
+});
+
+describe('⑦ paying a card right after buying', () => {
+    const livingDebitRule = { source: 'cathay_account', match_key: 'k:transfer_out', payment_method_id: LIVING, category_id: null };
+    const debit = (amount: number) => event('cathay_account', amount, '12:30', { kind: 'transfer_out', merchant: '電支交易' });
+
+    it('records a debit equal to an unpaid card purchase as a transfer to that card', () => {
+        const decision = decide(debit(223), ctx({ rules: [livingDebitRule], unpaidCardAccounts: [ESUN_CARD] }));
+        expect(decision).toMatchObject({
+            action: 'record',
+            record: { type: 'transfer', amount: 223, payment_method_id: LIVING, to_payment_method_id: ESUN_CARD, category_id: null },
+        });
+    });
+
+    it('asks when two cards could be the one paid, or none', () => {
+        expect(decide(debit(223), ctx({ rules: [livingDebitRule], unpaidCardAccounts: [ESUN_CARD, CATHAY_CARD] })))
+            .toMatchObject({ action: 'review', reason: 'needs_purpose' });
+        expect(decide(debit(223), ctx({ rules: [livingDebitRule] }))).toMatchObject({ action: 'review', reason: 'needs_purpose' });
+    });
+
+    it('asks when the debited account is not known yet', () => {
+        expect(decide(debit(223), ctx({ rules: [], unpaidCardAccounts: [ESUN_CARD] }))).toMatchObject({ action: 'review', reason: 'needs_purpose' });
+    });
+
+    it('never merges the debit into the card purchase it pays', () => {
+        const purchase = notified('r1', 223, '12:25', 'esun_card');
+        expect(findMergeTarget(debit(223), null, [purchase])).toEqual({ kind: 'none' });
+    });
+
+    it('counts each earlier payment against one purchase', () => {
+        expect(unpaidCardAccounts([ESUN_CARD, ESUN_CARD], [ESUN_CARD])).toEqual([ESUN_CARD]);
+        expect(unpaidCardAccounts([ESUN_CARD], [ESUN_CARD])).toEqual([]);
+        expect(unpaidCardAccounts([ESUN_CARD], [CATHAY_CARD])).toEqual([ESUN_CARD]);
+    });
+});
+
+describe('⑧ a source with a new shop name each time', () => {
+    const utaggoRule = { source: 'utaggo', match_key: 'k:expense', payment_method_id: ESUN_CARD, category_id: null };
+
+    it('uses the account remembered for the source', () => {
+        const decision = decide(event('utaggo', 175, '15:43', { merchant: '日月亭桃園藝文南' }), ctx({ rules: [utaggoRule] }));
+        expect(decision).toMatchObject({ action: 'record', record: { payment_method_id: ESUN_CARD, description: '日月亭桃園藝文南', category_id: null } });
     });
 });

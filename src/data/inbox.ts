@@ -77,15 +77,14 @@ export const InboxService = {
      */
     async remember(userId: string, event: NotificationEvent, accountId: string, categoryId: string | null) {
         if (!event.kind) return;
-        const key = ruleKey({ merchant: event.merchant, kind: event.kind });
-        const { error } = await supabase.from('auto_entry_rules').upsert({
-            user_id: userId,
-            source: event.source,
-            match_key: key,
-            payment_method_id: accountId,
-            category_id: event.merchant ? categoryId : null,
-            updated_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,source,match_key' });
+        const updatedAt = new Date().toISOString();
+        const row = (merchant: string | null, category: string | null) => ({
+            user_id: userId, source: event.source, match_key: ruleKey({ merchant, kind: event.kind! }),
+            payment_method_id: accountId, category_id: category, updated_at: updatedAt,
+        });
+        // The kind rule is the account fallback for shops this source has not named before.
+        const rows = event.merchant ? [row(event.merchant, categoryId), row(null, null)] : [row(null, null)];
+        const { error } = await supabase.from('auto_entry_rules').upsert(rows, { onConflict: 'user_id,source,match_key' });
         if (error) throw error;
     },
 

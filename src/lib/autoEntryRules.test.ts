@@ -57,6 +57,6 @@ describe('previewRemember', () => {
 
     it('remembers the category for a named merchant', () => {
         const preview = previewRemember({ kind: 'expense', merchant: '7-ELEVEN' }, 'LINE Pay', '玉山信用卡', FOOD);
-        expect(preview.text).toBe('之後「LINE Pay・7-ELEVEN」的消費會自動記到「玉山信用卡」，分類「餐飲」。');
+        expect(preview.text).toBe('之後「LINE Pay・7-ELEVEN」的消費會自動記到「玉山信用卡」，分類「餐飲」。LINE Pay其他店家的消費也會記到這個帳戶。');
     });
 });

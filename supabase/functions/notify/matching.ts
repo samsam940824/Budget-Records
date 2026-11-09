@@ -14,6 +14,10 @@ export const REPLAY_WINDOW_MS = 90 * 1000;
 export const NOTIFICATION_MERGE_WINDOW_MS = 10 * 60 * 1000;
 /** A manual entry may be typed a while before or after paying. */
 export const MANUAL_MERGE_WINDOW_MS = 30 * 60 * 1000;
+/** The user pays each card purchase soon after making it. */
+export const CARD_PAYMENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
+/** Sources whose records are purchases charged to a credit card. */
+export const CARD_SOURCES = ['esun_card', 'cathay_card', 'utaggo'];
 
 const TAIPEI_OFFSET = '+08:00';
 
@@ -84,6 +88,8 @@ export function findMergeTarget(event: ParsedEvent, accountId: string | null, ca
     const eligible = candidates.filter(r =>
         !r.is_distinct
         && !r.linkedSources.includes(event.source)
+        // A bank debit can pay a card purchase but never is one.
+        && !(event.kind === 'transfer_out' && r.linkedSources.some(s => CARD_SOURCES.includes(s)))
         && r.amount === event.amount
         && sameMovement(event.kind, accountId, r));
 
@@ -125,4 +131,15 @@ export function findPendingPartners(event: ParsedEvent, pending: PendingEvent[])
         if (!best || gap < best.gap) bySource.set(p.source, { partner: p, gap });
     }
     return [...bySource.values()].map(v => v.partner);
+}
+
+/**
+ * Card accounts holding a purchase of the debit's amount that no transfer
+ * into the card has paid yet. Each payment settles one purchase.
+ */
+export function unpaidCardAccounts(purchaseAccountIds: string[], paymentAccountIds: string[]): string[] {
+    const open = new Map<string, number>();
+    for (const id of purchaseAccountIds) open.set(id, (open.get(id) ?? 0) + 1);
+    for (const id of paymentAccountIds) if (open.has(id)) open.set(id, open.get(id)! - 1);
+    return [...open].filter(([, count]) => count > 0).map(([id]) => id);
 }

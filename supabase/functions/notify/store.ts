@@ -5,7 +5,9 @@
 import type { SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import { localDateTime } from '../quick-entry/logic.ts';
 import type { AutoEntryMode, Decision, DecisionContext, ReviewReason } from './decide.ts';
-import { CandidateRecord, NOTIFICATION_MERGE_WINDOW_MS, PendingEvent, REPLAY_WINDOW_MS } from './matching.ts';
+import {
+    CandidateRecord, CARD_PAYMENT_WINDOW_MS, CARD_SOURCES, NOTIFICATION_MERGE_WINDOW_MS, PendingEvent, REPLAY_WINDOW_MS, unpaidCardAccounts,
+} from './matching.ts';
 import type { ParsedEvent } from './parsers.ts';
 
 /** Raw notification text is cleared this long after an event is resolved. */
@@ -75,8 +77,32 @@ async function loadPending(db: SupabaseClient, userId: string, event: ParsedEven
     return rows.map(r => ({ ...r, amount: Number(r.amount), occurredAt: new Date(r.occurred_at) }));
 }
 
+/**
+ * For a bank debit: card accounts with a purchase of the same amount from
+ * the last two days (filed from a card notification) that is still unpaid.
+ */
+async function loadUnpaidCardAccounts(db: SupabaseClient, userId: string, event: ParsedEvent): Promise<string[]> {
+    if (event.kind !== 'transfer_out') return [];
+    const since = new Date(event.occurredAt.getTime() - CARD_PAYMENT_WINDOW_MS);
+    const cardEvents = unwrap(await db.from('notification_events').select('record_id')
+        .eq('user_id', userId).in('source', CARD_SOURCES).in('status', ['recorded', 'merged']).eq('amount', event.amount)
+        .gte('occurred_at', since.toISOString()).lte('occurred_at', event.occurredAt.toISOString()).not('record_id', 'is', null));
+    if (cardEvents.length === 0) return [];
+
+    const purchases = unwrap(await db.from('records').select('payment_method_id, date')
+        .eq('user_id', userId).eq('type', 'expense').in('id', cardEvents.map(e => e.record_id)));
+    const cards = [...new Set(purchases.map(p => p.payment_method_id).filter((id): id is string => id !== null))];
+    if (cards.length === 0) return [];
+
+    const firstDate = purchases.map(p => p.date).sort()[0];
+    const payments = unwrap(await db.from('records').select('to_payment_method_id')
+        .eq('user_id', userId).eq('type', 'transfer').eq('amount', event.amount).in('to_payment_method_id', cards).gte('date', firstDate));
+    return unpaidCardAccounts(purchases.map(p => p.payment_method_id ?? ''), payments.map(p => p.to_payment_method_id ?? ''))
+        .filter(id => id !== '');
+}
+
 export async function loadContext(db: SupabaseClient, userId: string, event: ParsedEvent, rawHash: string, now: Date): Promise<DecisionContext> {
-    const [settings, accounts, categories, rules, replays, candidates, pending] = await Promise.all([
+    const [settings, accounts, categories, rules, replays, candidates, pending, unpaidCards] = await Promise.all([
         db.from('user_settings').select('auto_entry_mode').eq('user_id', userId).maybeSingle(),
         db.from('payment_methods').select('id, match_last4, archived, currency_code').eq('user_id', userId),
         db.from('categories').select('id, type').eq('user_id', userId),
@@ -85,6 +111,7 @@ export async function loadContext(db: SupabaseClient, userId: string, event: Par
             .gte('received_at', new Date(now.getTime() - REPLAY_WINDOW_MS).toISOString()),
         loadCandidates(db, userId, event),
         loadPending(db, userId, event),
+        loadUnpaidCardAccounts(db, userId, event),
     ]);
     // No settings row yet means the defaults apply.
     if (settings.error) throw new Error(settings.error.message);
@@ -96,6 +123,7 @@ export async function loadContext(db: SupabaseClient, userId: string, event: Par
         isReplay: unwrap(replays).length > 0,
         candidates,
         pending,
+        unpaidCardAccounts: unpaidCards,
     };
 }
 
