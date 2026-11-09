@@ -121,5 +121,7 @@ export interface NotificationEvent {
     occurred_at: string | null;
     status: NotificationStatus;
     review_reason: string | null;
+    /** The card a bank debit most likely pays (migration 0006). */
+    suggested_to_payment_method_id: string | null;
     record_id: string | null;
 }

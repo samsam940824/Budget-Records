@@ -54,7 +54,7 @@ export default function ResolveSheet({ event, onClose }: { event: NotificationEv
     const [type, setType] = useState<RecordType>(event.kind ? DEFAULT_TYPE[event.kind] : 'expense');
     const [amount, setAmount] = useState(event.amount === null ? '' : String(Number(event.amount)));
     const [accountId, setAccountId] = useState(() => accounts.find(a => event.last4 && a.match_last4?.includes(event.last4))?.id ?? '');
-    const [toAccountId, setToAccountId] = useState('');
+    const [toAccountId, setToAccountId] = useState(() => accounts.find(a => a.id === event.suggested_to_payment_method_id)?.id ?? '');
     const [categoryId, setCategoryId] = useState('');
     const [description, setDescription] = useState(event.merchant ?? '');
     const [date, setDate] = useState(initial.date);

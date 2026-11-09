@@ -11,13 +11,16 @@ export type AutoEntryMode = 'auto' | 'review';
 /**
  * 'needs_purpose': a bank account movement whose purpose (card payment,
  * withdrawal, transfer) the text does not say.
+ * 'card_payment': a bank debit equal to an unpaid card purchase that does not
+ * say it is a card payment, or whose debited account is uncertain.
  */
-export type ReviewReason = 'unparsed' | 'unknown_account' | 'possible_replay' | 'ambiguous_match' | 'review_mode' | 'needs_purpose';
+export type ReviewReason = 'unparsed' | 'unknown_account' | 'possible_replay' | 'ambiguous_match' | 'review_mode' | 'needs_purpose' | 'card_payment';
 
 export const REVIEW_REASON_LABELS: { [R in ReviewReason]: string } = {
     unparsed: '看不懂的格式',
     unknown_account: '需要選帳戶',
     needs_purpose: '需要選用途',
+    card_payment: '疑似繳卡費，請選扣款帳戶',
     possible_replay: '疑似重複送出',
     ambiguous_match: '可能和既有記錄重複',
     review_mode: '待確認模式',
@@ -70,13 +73,21 @@ export interface NewRecord {
 }
 
 export type Decision =
-    | { action: 'review'; reason: ReviewReason; accountId: string | null }
+    /** `suggestedCardId`: the card a bank debit most likely pays, prefilled in review. */
+    | { action: 'review'; reason: ReviewReason; accountId: string | null; suggestedCardId?: string }
     /** `fill` is only applied to fields the record leaves empty. */
     | { action: 'merge'; recordId: string; fill: { description?: string } }
     | { action: 'record'; record: NewRecord; mergePendingIds: string[] };
 
 export const MERCHANT_PREFIX = 'm:';
 export const KIND_PREFIX = 'k:';
+
+/** A bank debit labelled as a card payment, e.g. 國泰「信用卡款」. */
+const CARD_PAYMENT_LABEL = /信用卡/;
+
+export function namesCardPayment(merchant: string | null): boolean {
+    return merchant !== null && CARD_PAYMENT_LABEL.test(merchant);
+}
 
 /**
  * Key a remembered choice is stored under: the merchant when known, else the
@@ -129,12 +140,7 @@ export function decide(event: ParsedEvent, ctx: DecisionContext): Decision {
     if (match.kind === 'ambiguous') return { action: 'review', reason: 'ambiguous_match', accountId };
 
     const type = recordType(event, ctx.categories.find(c => c.id === categoryId));
-    if (type === null) {
-        const card = cardPaid(event, accountId, ctx.unpaidCardAccounts);
-        if (card === null) return { action: 'review', reason: 'needs_purpose', accountId };
-        if (ctx.mode === 'review') return { action: 'review', reason: 'review_mode', accountId };
-        return recordDecision(event, ctx, accountId!, { type: 'transfer', category_id: null, to_payment_method_id: card, description: '' });
-    }
+    if (type === null) return decideMovement(event, ctx, accountId);
     if (accountId === null) return { action: 'review', reason: 'unknown_account', accountId };
     if (ctx.mode === 'review') return { action: 'review', reason: 'review_mode', accountId };
 
@@ -145,11 +151,24 @@ export function decide(event: ParsedEvent, ctx: DecisionContext): Decision {
 }
 
 /**
- * The card a bank debit pays: exactly one other card has an unpaid purchase
- * of this amount. Needs the debited account, so the transfer has both ends.
+ * A bank movement with no remembered purpose. A debit equal to an unpaid
+ * purchase on exactly one card is booked as paying that card only when the
+ * text says it is a card payment and the debited account is known; otherwise
+ * the card is suggested for review (玉山 debits may come from two accounts).
  */
+function decideMovement(event: ParsedEvent, ctx: DecisionContext, accountId: string | null): Decision {
+    const card = cardPaid(event, accountId, ctx.unpaidCardAccounts);
+    if (card === null) return { action: 'review', reason: 'needs_purpose', accountId };
+    if (accountId === null || !namesCardPayment(event.merchant)) {
+        return { action: 'review', reason: 'card_payment', accountId, suggestedCardId: card };
+    }
+    if (ctx.mode === 'review') return { action: 'review', reason: 'review_mode', accountId, suggestedCardId: card };
+    return recordDecision(event, ctx, accountId, { type: 'transfer', category_id: null, to_payment_method_id: card, description: '' });
+}
+
+/** The card a bank debit pays: exactly one other card has an unpaid purchase of this amount. */
 function cardPaid(event: ParsedEvent, accountId: string | null, unpaid: string[]): string | null {
-    if (event.kind !== 'transfer_out' || accountId === null) return null;
+    if (event.kind !== 'transfer_out') return null;
     const cards = unpaid.filter(id => id !== accountId);
     return cards.length === 1 ? cards[0] : null;
 }

@@ -3,7 +3,7 @@
 // web app can say what remembering a choice will do before it is saved.
 
 import { Category, NotificationKind, Record } from '../types/database.types';
-import { KIND_PREFIX, MERCHANT_PREFIX } from '../../supabase/functions/notify/decide';
+import { KIND_PREFIX, MERCHANT_PREFIX, namesCardPayment } from '../../supabase/functions/notify/decide';
 
 /** One remembered choice, see supabase/migrations/0004_notification_inbox.sql. */
 export interface AutoEntryRule {
@@ -72,6 +72,9 @@ export function previewRemember(
     const subject = `「${event.merchant ? `${sourceName}・${event.merchant}` : sourceName}」的${KIND_LABELS[event.kind]}`;
     const isMovement = event.kind === 'transfer_out' || event.kind === 'transfer_in';
 
+    if (event.kind === 'transfer_out' && !stored && namesCardPayment(event.merchant)) {
+        return { text: `之後${subject}金額對得上兩天內還沒繳的刷卡時，會自動記成「${accountName} → 那張卡」；對不上的仍會請你確認。`, warn: false };
+    }
     if (!ruleAutoRecords(event.kind, stored)) {
         return { text: `會記住帳戶「${accountName}」；之後${subject}仍會請你確認用途。`, warn: false };
     }

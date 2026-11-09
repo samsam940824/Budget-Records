@@ -50,6 +50,11 @@ describe('previewRemember', () => {
         expect(preview).toEqual({ text: '會記住帳戶「生活費」；之後「國泰帳戶通知・電支交易」的入帳仍會請你確認用途。', warn: false });
     });
 
+    it('explains that a labelled card payment is booked automatically', () => {
+        const preview = previewRemember({ kind: 'transfer_out', merchant: '信用卡款' }, '國泰帳戶通知', '生活費', undefined);
+        expect(preview.text).toBe('之後「國泰帳戶通知・信用卡款」的出帳金額對得上兩天內還沒繳的刷卡時，會自動記成「生活費 → 那張卡」；對不上的仍會請你確認。');
+    });
+
     it('says the category is not remembered for card notices without a merchant', () => {
         const preview = previewRemember({ kind: 'expense', merchant: null }, '玉山信用卡通知', '玉山信用卡', FOOD);
         expect(preview.text).toBe('之後「玉山信用卡通知」的消費會自動記到「玉山信用卡」，分類要自己補。');

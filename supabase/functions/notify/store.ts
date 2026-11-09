@@ -127,8 +127,12 @@ export async function loadContext(db: SupabaseClient, userId: string, event: Par
     };
 }
 
-export async function storePending(db: SupabaseClient, userId: string, base: EventBase, reason: ReviewReason): Promise<Outcome> {
-    unwrap(await db.from('notification_events').insert({ ...base, user_id: userId, status: 'pending', review_reason: reason }).select('id'));
+export async function storePending(
+    db: SupabaseClient, userId: string, base: EventBase, reason: ReviewReason, suggestedCardId: string | null = null,
+): Promise<Outcome> {
+    unwrap(await db.from('notification_events').insert({
+        ...base, user_id: userId, status: 'pending', review_reason: reason, suggested_to_payment_method_id: suggestedCardId,
+    }).select('id'));
     return { status: 'pending', reason };
 }
 
@@ -169,7 +173,7 @@ async function applyRecord(db: SupabaseClient, userId: string, base: EventBase, 
 
 export function applyDecision(db: SupabaseClient, userId: string, base: EventBase, decision: Decision): Promise<Outcome> {
     switch (decision.action) {
-        case 'review': return storePending(db, userId, base, decision.reason);
+        case 'review': return storePending(db, userId, base, decision.reason, decision.suggestedCardId ?? null);
         case 'merge': return applyMerge(db, userId, base, decision);
         case 'record': return applyRecord(db, userId, base, decision);
     }

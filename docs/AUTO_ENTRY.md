@@ -17,7 +17,7 @@
 
 ## 一次性部署（自架者）
 
-1. 在 Supabase SQL Editor 依序執行 [`0004_notification_inbox.sql`](../supabase/migrations/0004_notification_inbox.sql) 與 [`0005_needs_purpose.sql`](../supabase/migrations/0005_needs_purpose.sql)。退回用 [`supabase/rollback/`](../supabase/rollback/) 裡對應的檔案。
+1. 在 Supabase SQL Editor 依序執行 [`0004_notification_inbox.sql`](../supabase/migrations/0004_notification_inbox.sql)、[`0005_needs_purpose.sql`](../supabase/migrations/0005_needs_purpose.sql) 與 [`0006_card_payment_review.sql`](../supabase/migrations/0006_card_payment_review.sql)。退回用 [`supabase/rollback/`](../supabase/rollback/) 裡對應的檔案。
 2. 部署 Edge Function，並**關閉 JWT 驗證**：
    ```bash
    npx supabase functions deploy notify --no-verify-jwt --project-ref <你的 project ref>
@@ -64,7 +64,11 @@
 - 第一次出現的通知會放進 🔔 待確認（原因「需要選帳戶」）。選好帳戶並打開「**記住這個選擇**」（預設關閉），之後同類通知就會自動入帳；下方會說明記住後的效果。記錯可到「設定 → 自動記帳 → 已記住的選擇」刪除。
 - 國泰信用卡通知有卡號末四碼：在帳戶設定填好「卡號／帳號末四碼」，第一次就會自動記到那張卡。
 - uTagGo 停車離場通知會記成支出、備註停車場名稱；卡片扣款通知在 10 分鐘內到的話會合併成一筆。
-- 玉山「提台幣」、國泰「帳戶出帳／入帳」不知道用途（繳卡費、領錢、轉帳），會請你確認。例外是**繳卡費**：出帳金額剛好等於兩天內某張卡還沒繳的消費（由刷卡通知記的），而且只有一張卡對得上，就自動記成「這個帳戶 → 那張卡」的轉帳。這需要先記住這個銀行通知對應的帳戶。
+- 玉山「提台幣」、國泰「帳戶出帳／入帳」不知道用途（繳卡費、領錢、轉帳），會請你確認。
+- **繳卡費**：出帳金額剛好等於兩天內某張卡還沒繳的消費（由刷卡通知記的），而且只有一張卡對得上時：
+  - 通知寫明是信用卡款（例如國泰「信用卡款」），而且記住過這個通知的帳戶 → 自動記成「這個帳戶 → 那張卡」的轉帳。
+  - 其他出帳（例如玉山「提台幣」，可能是生活費或汽車帳戶扣的）→ 放進待確認「疑似繳卡費」，轉入已經填好那張卡，只要選轉出帳戶。
+- 轉帳的兩邊各有一則通知：先記好其中一則，另一則 10 分鐘內才到的話會自動合併；兩則都已經在待確認的話，第二則選「合併到既有記錄」或忽略。
 - 同一個來源遇到沒看過的店家或停車場時，會沿用這個來源上次記住的帳戶。
 - 看不懂的格式（例如第一次的 LINE Pay、Apple Pay）會連同原文放進待確認，可以把原文提供給開發者加上解析規則。
 

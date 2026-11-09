@@ -186,9 +186,10 @@ describe('accounts, categories and modes', () => {
 
 describe('⑦ paying a card right after buying', () => {
     const livingDebitRule = { source: 'cathay_account', match_key: 'k:transfer_out', payment_method_id: LIVING, category_id: null };
-    const debit = (amount: number) => event('cathay_account', amount, '12:30', { kind: 'transfer_out', merchant: '電支交易' });
+    const debit = (amount: number, merchant: string | null = '信用卡款', source = 'cathay_account') =>
+        event(source, amount, '12:30', { kind: 'transfer_out', merchant });
 
-    it('records a debit equal to an unpaid card purchase as a transfer to that card', () => {
+    it('records a debit labelled as a card payment as a transfer to the unpaid card', () => {
         const decision = decide(debit(223), ctx({ rules: [livingDebitRule], unpaidCardAccounts: [ESUN_CARD] }));
         expect(decision).toMatchObject({
             action: 'record',
@@ -196,14 +197,31 @@ describe('⑦ paying a card right after buying', () => {
         });
     });
 
-    it('asks when two cards could be the one paid, or none', () => {
+    it('only suggests the card when the debit does not say it pays a card', () => {
+        expect(decide(debit(223, '網銀轉帳'), ctx({ rules: [livingDebitRule], unpaidCardAccounts: [ESUN_CARD] })))
+            .toEqual({ action: 'review', reason: 'card_payment', accountId: LIVING, suggestedCardId: ESUN_CARD });
+    });
+
+    it('suggests the card for a 玉山 debit, which may come from either 玉山 account', () => {
+        const esunDebitRule = { source: 'esun_account', match_key: 'k:transfer_out', payment_method_id: LIVING, category_id: null };
+        expect(decide(debit(223, null, 'esun_account'), ctx({ rules: [esunDebitRule], unpaidCardAccounts: [ESUN_CARD] })))
+            .toMatchObject({ action: 'review', reason: 'card_payment', suggestedCardId: ESUN_CARD });
+    });
+
+    it('suggests the card when the debited account is not known yet', () => {
+        expect(decide(debit(223), ctx({ rules: [], unpaidCardAccounts: [ESUN_CARD] })))
+            .toEqual({ action: 'review', reason: 'card_payment', accountId: null, suggestedCardId: ESUN_CARD });
+    });
+
+    it('asks for the purpose when two cards could be the one paid, or none', () => {
         expect(decide(debit(223), ctx({ rules: [livingDebitRule], unpaidCardAccounts: [ESUN_CARD, CATHAY_CARD] })))
             .toMatchObject({ action: 'review', reason: 'needs_purpose' });
         expect(decide(debit(223), ctx({ rules: [livingDebitRule] }))).toMatchObject({ action: 'review', reason: 'needs_purpose' });
     });
 
-    it('asks when the debited account is not known yet', () => {
-        expect(decide(debit(223), ctx({ rules: [], unpaidCardAccounts: [ESUN_CARD] }))).toMatchObject({ action: 'review', reason: 'needs_purpose' });
+    it('keeps the suggestion in review mode', () => {
+        expect(decide(debit(223), ctx({ mode: 'review', rules: [livingDebitRule], unpaidCardAccounts: [ESUN_CARD] })))
+            .toMatchObject({ action: 'review', reason: 'review_mode', suggestedCardId: ESUN_CARD });
     });
 
     it('never merges the debit into the card purchase it pays', () => {
