@@ -41,6 +41,31 @@ describe('國泰', () => {
     });
 });
 
+describe('國泰信用卡', () => {
+    it('reads amount, card suffix, time and merchant despite the points promotion', () => {
+        const text = '國泰世華\n【刷卡通知】金額NT$59元\n卡號末四碼6322於 2026/11/09 20:30在連加刷卡。立即以點數即時折抵，最高可折抵消費金額30%，點擊查看消費明細';
+        expect(parsed(text)).toMatchObject({
+            source: 'cathay_card', kind: 'expense', amount: 59, last4: '6322', merchant: '連加',
+            occurredAt: new Date('2026-11-09T12:30:00Z'),
+        });
+    });
+});
+
+describe('uTagGo', () => {
+    it('reads the parking fee on exit', () => {
+        const text = 'uTagGo\nBGW-6189於 2026/11/08 15:43自日月亭桃園藝文南離場，費用175元將為您自動代扣，使用uTagGo App查詢明細最方便。';
+        expect(parsed(text)).toMatchObject({
+            source: 'utaggo', kind: 'expense', amount: 175, merchant: '日月亭桃園藝文南',
+            occurredAt: new Date('2026-11-08T07:43:00Z'),
+        });
+    });
+
+    it('drops the entry notice', () => {
+        const text = 'uTagGo\nBGW-6189於 2026/11/08 16:18進入力揚中壢中原國小，提醒您，本車採用「eTag停車扣繳」自動扣款，離場前請無須再至繳費機繳費即可直接出場，謝謝您的愛用。';
+        expect(parseNotification(text, received).status).toBe('ignored');
+    });
+});
+
 describe('not transactions', () => {
     it.each([
         ['card payment received', '玉山銀行\n信用卡繳款入帳通知'],

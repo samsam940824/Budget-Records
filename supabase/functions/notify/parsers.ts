@@ -57,13 +57,18 @@ const MONEY_HINT = /NT\$\s*[0-9]|\$\s*[0-9]|[0-9][0-9,]*\s*元/;
 interface Parser {
     source: string;
     pattern: RegExp;
-    build: (match: RegExpMatchArray, receivedAt: Date) => Omit<ParsedEvent, 'source' | 'currencyCode' | 'last4'> | null;
+    build: (match: RegExpMatchArray, receivedAt: Date) => (Omit<ParsedEvent, 'source' | 'currencyCode' | 'last4'> & { last4?: string }) | null;
+}
+
+/** A Taiwan wall-clock timestamp from the text, e.g. 2026/11/09 20:30. */
+function taipeiTime(y: string, mo: string, d: string, h: string, mi: string, s = '00'): Date {
+    const pad = (v: string) => v.padStart(2, '0');
+    return new Date(`${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${mi}:${s}${TAIPEI_OFFSET}`);
 }
 
 function cathayTime(m: RegExpMatchArray): Date {
     const [, y, mo, d, h, mi, s] = m;
-    const pad = (v: string) => v.padStart(2, '0');
-    return new Date(`${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${mi}:${s}${TAIPEI_OFFSET}`);
+    return taipeiTime(y, mo, d, h, mi, s);
 }
 
 function simple(kind: EventKind) {
@@ -81,6 +86,31 @@ function cathayAccount(kind: EventKind) {
     };
 }
 
+/** 「【刷卡通知】金額NT$59元 卡號末四碼6322於 2026/11/09 20:30在連加刷卡。…」 */
+const CATHAY_CARD = new RegExp(
+    `【刷卡通知】\\s*金額\\s*NT\\$\\s*${AMOUNT}\\s*元\\s*卡號末四碼\\s*(\\d{4})\\s*於\\s*(\\d{4})/(\\d{1,2})/(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})\\s*在\\s*(.+?)\\s*刷卡`,
+);
+
+function cathayCard(m: RegExpMatchArray) {
+    const [, rawAmount, last4, y, mo, d, h, mi, merchant] = m;
+    const amount = parseEntryAmount(rawAmount);
+    return amount === null ? null : { kind: 'expense' as const, amount, last4, merchant: merchant.trim() || null, occurredAt: taipeiTime(y, mo, d, h, mi) };
+}
+
+/**
+ * uTagGo parking exit: 「BGW-6189於 2026/11/08 15:43自日月亭桃園藝文南離場，費用175元將為您自動代扣」.
+ * The entry notice quotes no fee and falls through to ignored.
+ */
+const UTAGGO_EXIT = new RegExp(
+    `於\\s*(\\d{4})/(\\d{1,2})/(\\d{1,2})\\s+(\\d{1,2}):(\\d{2})\\s*自\\s*(.+?)\\s*離場\\s*[，,]\\s*費用\\s*${AMOUNT}\\s*元`,
+);
+
+function utaggoExit(m: RegExpMatchArray) {
+    const [, y, mo, d, h, mi, lot, rawAmount] = m;
+    const amount = parseEntryAmount(rawAmount);
+    return amount === null ? null : { kind: 'expense' as const, amount, merchant: lot.trim() || null, occurredAt: taipeiTime(y, mo, d, h, mi) };
+}
+
 const CATHAY_ACCOUNT = (label: string) => new RegExp(
     `【帳戶${label}通知】\\s*您於\\s*(\\d{4})/(\\d{1,2})/(\\d{1,2})\\s+(\\d{1,2}):(\\d{2}):(\\d{2})\\s*(.*?)[,，]\\s*金額為\\s*NT\\$\\s*${AMOUNT}\\s*元`,
 );
@@ -91,6 +121,8 @@ const PARSERS: Parser[] = [
     { source: 'esun_card', pattern: new RegExp(`玉山[\\s\\S]*信用卡消費\\s*${AMOUNT}\\s*元`), build: simple('expense') },
     { source: 'esun_account', pattern: new RegExp(`金額異動\\s*[～~]?\\s*提台幣\\s*${AMOUNT}\\s*元`), build: simple('transfer_out') },
     { source: 'esun_account', pattern: new RegExp(`金額異動\\s*[～~]?\\s*存台幣\\s*${AMOUNT}\\s*元`), build: simple('transfer_in') },
+    { source: 'cathay_card', pattern: CATHAY_CARD, build: cathayCard },
+    { source: 'utaggo', pattern: UTAGGO_EXIT, build: utaggoExit },
     { source: 'cathay_account', pattern: CATHAY_ACCOUNT('出帳'), build: cathayAccount('transfer_out') },
     { source: 'cathay_account', pattern: CATHAY_ACCOUNT('入帳'), build: cathayAccount('transfer_in') },
 ];
@@ -114,7 +146,7 @@ export function parseNotification(text: string, receivedAt: Date): ParseResult {
         const match = normalized.match(parser.pattern);
         if (!match) continue;
         const built = parser.build(match, receivedAt);
-        if (built) return { status: 'parsed', event: { ...built, source: parser.source, currencyCode: 'TWD', last4: null } };
+        if (built) return { status: 'parsed', event: { ...built, source: parser.source, currencyCode: 'TWD', last4: built.last4 ?? null } };
     }
     if (NOT_A_TRANSACTION.test(normalized)) return { status: 'ignored' };
     return MONEY_HINT.test(normalized) ? { status: 'unparsed' } : { status: 'ignored' };

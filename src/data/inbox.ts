@@ -12,6 +12,7 @@ const SOURCE_LABELS: { [source: string]: string } = {
     cathay_card: '國泰信用卡通知',
     cathay_account: '國泰帳戶通知',
     linepay: 'LINE Pay',
+    utaggo: 'uTagGo 停車',
     wallet: 'Apple Pay',
     unknown: '未知來源',
 };

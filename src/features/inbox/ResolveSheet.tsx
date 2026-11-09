@@ -59,7 +59,8 @@ export default function ResolveSheet({ event, onClose }: { event: NotificationEv
     const [description, setDescription] = useState(event.merchant ?? '');
     const [date, setDate] = useState(initial.date);
     const [time, setTime] = useState(initial.time);
-    const [remember, setRemember] = useState(canRemember(event));
+    // Off by default: a remembered choice files later notices without asking.
+    const [remember, setRemember] = useState(false);
     const [mergeTarget, setMergeTarget] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
