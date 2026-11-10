@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AccountRef, decide, DecisionContext, ruleKey } from './decide';
+import { AccountRef, decide, DecisionContext, ruleKey, waitsForPartner } from './decide';
 import { CandidateRecord, findMergeTarget, isPossibleReplay, PendingEvent, unpaidCardAccounts } from './matching';
 import type { ParsedEvent } from './parsers';
 
@@ -321,5 +321,19 @@ describe('⑪ fuel paid with LINE Pay', () => {
     it('leaves other shops uncategorised', () => {
         expect(decide(linepay('全都雞拉麵 西湖店'), ctx({ categories: [FUEL], pending: [waitingCard] })))
             .toMatchObject({ record: { category_id: null, description: '全都雞拉麵 西湖店' } });
+    });
+});
+
+describe('⑫ wallet and card notices arriving in the same second', () => {
+    it('the LINE Pay side waits and decides again; the card side does not', () => {
+        expect(waitsForPartner(decide(event('linepay', 299, '20:12', { merchant: 'POPEYES 瑞光門市(線上點餐)' }), ctx()))).toBe(true);
+        expect(waitsForPartner(decide(event('esun_card', 299, '20:12'), ctx()))).toBe(false);
+    });
+
+    it('after the wait it finds the card notice stored meanwhile', () => {
+        const waitingCard: PendingEvent = { id: 'e-card', source: 'esun_card', kind: 'expense', amount: 299, merchant: null, last4: null, occurredAt: new Date('2026-11-07T20:12:00+08:00') };
+        expect(decide(event('linepay', 299, '20:12', { merchant: 'POPEYES 瑞光門市(線上點餐)' }), ctx({ pending: [waitingCard] }))).toMatchObject({
+            action: 'record', record: { payment_method_id: ESUN_CARD, description: 'POPEYES 瑞光門市(線上點餐)' }, mergePendingIds: ['e-card'],
+        });
     });
 });

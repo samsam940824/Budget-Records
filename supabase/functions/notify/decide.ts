@@ -173,6 +173,16 @@ export function decide(event: ParsedEvent, ctx: DecisionContext): Decision {
 }
 
 /**
+ * A payment no account is known for yet, e.g. LINE Pay: the card notice of
+ * the same payment often arrives in the same second and is still being
+ * processed, so the caller decides once more after a short wait. Only this
+ * side waits; if both did, they would miss each other again.
+ */
+export function waitsForPartner(decision: Decision): boolean {
+    return decision.action === 'review' && decision.reason === 'unknown_account';
+}
+
+/**
  * A card or wallet payment. Notices about one payment from different sources
  * complete each other: the card notice knows the account, a wallet notice
  * (LINE Pay, 全盈+PAY) names the shop the 玉山 card notice lacks. A card
