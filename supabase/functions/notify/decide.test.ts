@@ -32,6 +32,9 @@ function record(id: string, amount: number, time: string | null, extra: Partial<
 const notified = (id: string, amount: number, time: string, source: string, extra: Partial<CandidateRecord> = {}) =>
     record(id, amount, time, { source: 'notification', linkedSources: [source], ...extra });
 
+/** A card notice whose shop is known, e.g. completed by a LINE Pay notice. */
+const SHOP = { merchant: '咖啡店' };
+
 const esunCardRule = { source: 'esun_card', match_key: 'k:expense', payment_method_id: ESUN_CARD, category_id: null };
 
 function ctx(overrides: Partial<DecisionContext> = {}): DecisionContext {
@@ -41,7 +44,7 @@ function ctx(overrides: Partial<DecisionContext> = {}): DecisionContext {
 describe('① same source, different notifications', () => {
     it('two 65 coffees a minute apart are two records', () => {
         const first = notified('r1', 65, '10:00', 'esun_card');
-        const decision = decide(event('esun_card', 65, '10:01'), ctx({ candidates: [first] }));
+        const decision = decide(event('esun_card', 65, '10:01', SHOP), ctx({ candidates: [first] }));
         expect(decision.action).toBe('record');
     });
 });
@@ -83,9 +86,9 @@ describe('③ different sources, one purchase', () => {
 
     it('a card notice arriving after LINE Pay absorbs the waiting LINE Pay event', () => {
         const pending: PendingEvent[] = [
-            { id: 'e-linepay', source: 'linepay', kind: 'expense', amount: 40, merchant: '50嵐', occurredAt: new Date('2026-11-07T12:00:00+08:00') },
-            { id: 'e-other-card', source: 'esun_card', kind: 'expense', amount: 40, merchant: null, occurredAt: new Date('2026-11-07T12:00:00+08:00') },
-            { id: 'e-old', source: 'wallet', kind: 'expense', amount: 40, merchant: null, occurredAt: new Date('2026-11-07T11:00:00+08:00') },
+            { id: 'e-linepay', source: 'linepay', kind: 'expense', amount: 40, merchant: '50嵐', last4: null, occurredAt: new Date('2026-11-07T12:00:00+08:00') },
+            { id: 'e-other-card', source: 'esun_card', kind: 'expense', amount: 40, merchant: null, last4: null, occurredAt: new Date('2026-11-07T12:00:00+08:00') },
+            { id: 'e-old', source: 'wallet', kind: 'expense', amount: 40, merchant: null, last4: null, occurredAt: new Date('2026-11-07T11:00:00+08:00') },
         ];
         const decision = decide(event('esun_card', 40, '12:01'), ctx({ pending }));
         expect(decision).toMatchObject({ action: 'record', record: { description: '50嵐' }, mergePendingIds: ['e-linepay'] });
@@ -100,17 +103,17 @@ describe('④ a notification for something already entered by hand', () => {
     });
 
     it('records separately after 30 minutes', () => {
-        expect(decide(event('esun_card', 65, '10:45'), ctx({ candidates: [manual] })).action).toBe('record');
+        expect(decide(event('esun_card', 65, '10:45', SHOP), ctx({ candidates: [manual] })).action).toBe('record');
     });
 
     it('never merges into a record marked as a separate purchase', () => {
         const distinct = record('m1', 65, '10:00', { is_distinct: true });
-        expect(decide(event('esun_card', 65, '10:01'), ctx({ candidates: [distinct] })).action).toBe('record');
+        expect(decide(event('esun_card', 65, '10:01', SHOP), ctx({ candidates: [distinct] })).action).toBe('record');
     });
 
     it('does not merge into a record in a different account', () => {
         const otherCard = record('m1', 65, '10:00', { payment_method_id: CATHAY_CARD });
-        expect(decide(event('esun_card', 65, '10:01'), ctx({ candidates: [otherCard] })).action).toBe('record');
+        expect(decide(event('esun_card', 65, '10:01', SHOP), ctx({ candidates: [otherCard] })).action).toBe('record');
     });
 });
 
@@ -140,7 +143,7 @@ describe('⑥ several candidates', () => {
 describe('accounts, categories and modes', () => {
     it('asks for the account the first time, then remembers it', () => {
         expect(decide(event('esun_card', 59, '10:00'), ctx({ rules: [] }))).toMatchObject({ action: 'review', reason: 'unknown_account' });
-        expect(decide(event('esun_card', 59, '10:00'), ctx())).toMatchObject({
+        expect(decide(event('esun_card', 59, '10:00', SHOP), ctx())).toMatchObject({
             action: 'record',
             record: { type: 'expense', amount: 59, payment_method_id: ESUN_CARD, category_id: null, date: '2026-11-07', time: '10:00', source: 'notification' },
         });
@@ -156,7 +159,7 @@ describe('accounts, categories and modes', () => {
             { source: 'esun_card', match_key: 'k:expense', payment_method_id: ESUN_CARD, category_id: 'cat-lunch' },
             { source: 'cathay_card', match_key: 'm:50嵐', payment_method_id: CATHAY_CARD, category_id: 'cat-drink' },
         ];
-        expect(decide(event('esun_card', 59, '10:00'), ctx({ rules }))).toMatchObject({ record: { category_id: null } });
+        expect(decide(event('esun_card', 59, '10:00', SHOP), ctx({ rules }))).toMatchObject({ record: { category_id: null } });
         expect(decide(event('cathay_card', 40, '10:00', { merchant: '50嵐' }), ctx({ rules }))).toMatchObject({ record: { category_id: 'cat-drink' } });
         expect(ruleKey(event('cathay_card', 40, '10:00', { merchant: ' 50嵐 ' }))).toBe('m:50嵐');
     });
@@ -170,7 +173,7 @@ describe('accounts, categories and modes', () => {
     it('records a debit card purchase once its channel has an expense category', () => {
         const debit = event('cathay_account', 65, '10:00', { kind: 'transfer_out', merchant: '金融卡消費' });
         const rules = [{ source: 'cathay_account', match_key: 'm:金融卡消費', payment_method_id: LIVING, category_id: 'cat-food' }];
-        const decision = decide(debit, ctx({ rules, categories: [{ id: 'cat-food', type: 'expense' }] }));
+        const decision = decide(debit, ctx({ rules, categories: [{ id: 'cat-food', name: '餐飲', type: 'expense' }] }));
         expect(decision).toMatchObject({ action: 'record', record: { type: 'expense', payment_method_id: LIVING, category_id: 'cat-food' } });
     });
 
@@ -180,7 +183,7 @@ describe('accounts, categories and modes', () => {
     });
 
     it('review mode holds even fully resolved events', () => {
-        expect(decide(event('esun_card', 59, '10:00'), ctx({ mode: 'review' }))).toMatchObject({ action: 'review', reason: 'review_mode' });
+        expect(decide(event('esun_card', 59, '10:00', SHOP), ctx({ mode: 'review' }))).toMatchObject({ action: 'review', reason: 'review_mode' });
     });
 });
 
@@ -253,7 +256,7 @@ describe('⑨ LINE Pay charged to a card', () => {
     });
 
     it('the card notice takes the waiting LINE Pay shop name', () => {
-        const waiting: PendingEvent = { id: 'e1', source: 'linepay', kind: 'expense', amount: 253, merchant: '全都雞拉麵 西湖店', occurredAt: linepay('12:06').occurredAt };
+        const waiting: PendingEvent = { id: 'e1', source: 'linepay', kind: 'expense', amount: 253, merchant: '全都雞拉麵 西湖店', last4: null, occurredAt: linepay('12:06').occurredAt };
         expect(decide(event('esun_card', 253, '12:07'), ctx({ pending: [waiting] }))).toMatchObject({
             action: 'record', record: { payment_method_id: ESUN_CARD, description: '全都雞拉麵 西湖店' }, mergePendingIds: ['e1'],
         });
@@ -269,5 +272,54 @@ describe('⑨ LINE Pay charged to a card', () => {
         const walletRule = { source: 'linepay', match_key: 'k:expense', payment_method_id: LIVING, category_id: null };
         const card = notified('r1', 253, '12:06', 'esun_card');
         expect(decide(linepay('12:07'), ctx({ rules: [walletRule], candidates: [card] }))).toMatchObject({ action: 'merge', recordId: 'r1' });
+    });
+});
+
+describe('⑩ a card purchase with no shop name', () => {
+    const waiting = (source: string, merchant: string | null): PendingEvent =>
+        ({ id: `e-${source}`, source, kind: 'expense', amount: 76, merchant, last4: null, occurredAt: new Date('2026-11-07T12:00:00+08:00') });
+
+    it('waits for the shop name with the card already chosen', () => {
+        expect(decide(event('esun_card', 76, '12:01'), ctx()))
+            .toEqual({ action: 'review', reason: 'needs_merchant', accountId: ESUN_CARD, suggestedAccountId: ESUN_CARD });
+    });
+
+    it('a waiting 全盈+PAY notice names the shop', () => {
+        expect(decide(event('esun_card', 76, '12:01'), ctx({ pending: [waiting('pluspay', '全家便利商店')] }))).toMatchObject({
+            action: 'record', record: { payment_method_id: ESUN_CARD, description: '全家便利商店' }, mergePendingIds: ['e-pluspay'],
+        });
+    });
+
+    it('a wallet notice arriving later files the waiting card notice under the card', () => {
+        const decision = decide(event('pluspay', 76, '12:02', { merchant: '全家便利商店' }), ctx({ pending: [waiting('esun_card', null)] }));
+        expect(decision).toMatchObject({
+            action: 'record', record: { payment_method_id: ESUN_CARD, description: '全家便利商店' }, mergePendingIds: ['e-esun_card'],
+        });
+    });
+
+    it('a LINE Pay notice arriving later does the same', () => {
+        const decision = decide(event('linepay', 76, '12:02', { merchant: '全都雞拉麵 西湖店' }), ctx({ pending: [waiting('esun_card', null)] }));
+        expect(decision).toMatchObject({ action: 'record', record: { payment_method_id: ESUN_CARD }, mergePendingIds: ['e-esun_card'] });
+    });
+
+    it('keeps purchases from sources that never name a shop as before', () => {
+        expect(decide(event('wallet', 120, '10:00', { last4: '1234' }), ctx({ rules: [] }))).toMatchObject({ action: 'record' });
+    });
+});
+
+describe('⑪ fuel paid with LINE Pay', () => {
+    const FUEL = { id: 'cat-fuel', name: '加油', type: 'expense' as const };
+    const waitingCard: PendingEvent = { id: 'e-card', source: 'esun_card', kind: 'expense', amount: 1200, merchant: null, last4: null, occurredAt: new Date('2026-11-10T08:00:00+08:00') };
+    const linepay = (merchant: string) => event('linepay', 1200, '08:01', { merchant, occurredAt: new Date('2026-11-10T08:01:00+08:00') });
+
+    it('files a 中油 purchase as 加油 with the usual note', () => {
+        expect(decide(linepay('台灣中油 中壢站'), ctx({ categories: [FUEL], pending: [waitingCard] }))).toMatchObject({
+            action: 'record', record: { payment_method_id: ESUN_CARD, category_id: 'cat-fuel', description: '1110汽車加油' },
+        });
+    });
+
+    it('leaves other shops uncategorised', () => {
+        expect(decide(linepay('全都雞拉麵 西湖店'), ctx({ categories: [FUEL], pending: [waitingCard] })))
+            .toMatchObject({ record: { category_id: null, description: '全都雞拉麵 西湖店' } });
     });
 });

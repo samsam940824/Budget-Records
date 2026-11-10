@@ -77,6 +77,13 @@ describe('LINE Pay', () => {
     });
 });
 
+describe('全盈+PAY', () => {
+    it('reads the shop and amount despite the anti-fraud footer mentioning 驗證碼', () => {
+        const text = '全盈+PAY\n【全家便利商店】付款成功76元，為保障您的交易安全，請謹防詐騙，您應避免向他人提供或揭露個人資料、密碼、驗證碼或銀行帳戶等資訊。如遇可疑扣款，請立即聯繫客服以保障您的權益。';
+        expect(parsed(text)).toMatchObject({ source: 'pluspay', kind: 'expense', amount: 76, merchant: '全家便利商店', occurredAt: received });
+    });
+});
+
 describe('not transactions', () => {
     it.each([
         ['card payment received', '玉山銀行\n信用卡繳款入帳通知'],

@@ -44,6 +44,7 @@ export interface PendingEvent {
     kind: EventKind | null;
     amount: number | null;
     merchant: string | null;
+    last4: string | null;
     occurredAt: Date;
 }
 

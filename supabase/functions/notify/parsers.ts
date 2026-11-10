@@ -39,7 +39,8 @@ const AMOUNT = '([0-9][0-9,]*(?:\\.[0-9]{1,2})?)';
 const IGNORE_PATTERNS: RegExp[] = [
     /信用卡繳款入帳通知/, // card payment received; the bank debit is recorded instead
     /你有一筆存款入帳囉/, // Cathay LINE duplicate of the app's 入帳 notice
-    /驗證碼|OTP/i,
+    // An actual code, not 全盈+PAY's 「請勿提供…驗證碼」 anti-fraud footer.
+    /驗證碼\s*(?:為|是|[:：])?\s*[0-9]{4,}|OTP/i,
 ];
 
 /** Cancellations and refunds reverse an earlier record, so a human decides. */
@@ -119,6 +120,14 @@ const LINEPAY_PAYMENT = new RegExp(
     `LINE\\s*Pay\\s*付款\\s*NT\\$\\s*${AMOUNT}\\s*付款完成[。.]?(?:\\s*商店名稱\\s*[:：]\\s*([^。]+))?`,
 );
 
+/** 全盈+PAY: 「【全家便利商店】付款成功76元，為保障您的交易安全…」. */
+const PLUSPAY_PAYMENT = new RegExp(`【([^】]+)】\\s*付款成功\\s*${AMOUNT}\\s*元`);
+
+function pluspayPayment(m: RegExpMatchArray, receivedAt: Date) {
+    const amount = parseEntryAmount(m[2]);
+    return amount === null ? null : { kind: 'expense' as const, amount, merchant: m[1].trim() || null, occurredAt: receivedAt };
+}
+
 function linepayPayment(m: RegExpMatchArray, receivedAt: Date) {
     const amount = parseEntryAmount(m[1]);
     return amount === null ? null : { kind: 'expense' as const, amount, merchant: m[2]?.trim() || null, occurredAt: receivedAt };
@@ -137,6 +146,7 @@ const PARSERS: Parser[] = [
     { source: 'cathay_card', pattern: CATHAY_CARD, build: cathayCard },
     { source: 'utaggo', pattern: UTAGGO_EXIT, build: utaggoExit },
     { source: 'linepay', pattern: LINEPAY_PAYMENT, build: linepayPayment },
+    { source: 'pluspay', pattern: PLUSPAY_PAYMENT, build: pluspayPayment },
     { source: 'cathay_account', pattern: CATHAY_ACCOUNT('出帳'), build: cathayAccount('transfer_out') },
     { source: 'cathay_account', pattern: CATHAY_ACCOUNT('入帳'), build: cathayAccount('transfer_in') },
 ];

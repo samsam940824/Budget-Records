@@ -70,7 +70,7 @@ async function loadCandidates(db: SupabaseClient, userId: string, event: ParsedE
 async function loadPending(db: SupabaseClient, userId: string, event: ParsedEvent): Promise<PendingEvent[]> {
     const at = event.occurredAt.getTime();
     const rows = unwrap(await db.from('notification_events')
-        .select('id, source, kind, amount, merchant, occurred_at')
+        .select('id, source, kind, amount, merchant, last4, occurred_at')
         .eq('user_id', userId).eq('status', 'pending').eq('amount', event.amount)
         .gte('occurred_at', new Date(at - NOTIFICATION_MERGE_WINDOW_MS).toISOString())
         .lte('occurred_at', new Date(at + NOTIFICATION_MERGE_WINDOW_MS).toISOString()));
@@ -105,8 +105,9 @@ export async function loadContext(db: SupabaseClient, userId: string, event: Par
     const [settings, accounts, categories, rules, replays, candidates, pending, unpaidCards] = await Promise.all([
         db.from('user_settings').select('auto_entry_mode').eq('user_id', userId).maybeSingle(),
         db.from('payment_methods').select('id, match_last4, archived, currency_code').eq('user_id', userId),
-        db.from('categories').select('id, type').eq('user_id', userId),
-        db.from('auto_entry_rules').select('source, match_key, payment_method_id, category_id').eq('user_id', userId).eq('source', event.source),
+        db.from('categories').select('id, name, type').eq('user_id', userId),
+        // Every source: a waiting card notice's account is resolved by its own rules.
+        db.from('auto_entry_rules').select('source, match_key, payment_method_id, category_id').eq('user_id', userId),
         db.from('notification_events').select('raw_hash, received_at').eq('user_id', userId).eq('raw_hash', rawHash)
             .gte('received_at', new Date(now.getTime() - REPLAY_WINDOW_MS).toISOString()),
         loadCandidates(db, userId, event),
@@ -127,11 +128,16 @@ export async function loadContext(db: SupabaseClient, userId: string, event: Par
     };
 }
 
-export async function storePending(
-    db: SupabaseClient, userId: string, base: EventBase, reason: ReviewReason, suggestedCardId: string | null = null,
-): Promise<Outcome> {
+/** Values prefilled when the user files a pending event. */
+export interface Suggestion {
+    accountId?: string;
+    cardId?: string;
+}
+
+export async function storePending(db: SupabaseClient, userId: string, base: EventBase, reason: ReviewReason, suggestion: Suggestion = {}): Promise<Outcome> {
     unwrap(await db.from('notification_events').insert({
-        ...base, user_id: userId, status: 'pending', review_reason: reason, suggested_to_payment_method_id: suggestedCardId,
+        ...base, user_id: userId, status: 'pending', review_reason: reason,
+        suggested_payment_method_id: suggestion.accountId ?? null, suggested_to_payment_method_id: suggestion.cardId ?? null,
     }).select('id'));
     return { status: 'pending', reason };
 }
@@ -173,7 +179,7 @@ async function applyRecord(db: SupabaseClient, userId: string, base: EventBase, 
 
 export function applyDecision(db: SupabaseClient, userId: string, base: EventBase, decision: Decision): Promise<Outcome> {
     switch (decision.action) {
-        case 'review': return storePending(db, userId, base, decision.reason, decision.suggestedCardId ?? null);
+        case 'review': return storePending(db, userId, base, decision.reason, { accountId: decision.suggestedAccountId, cardId: decision.suggestedCardId });
         case 'merge': return applyMerge(db, userId, base, decision);
         case 'record': return applyRecord(db, userId, base, decision);
     }

@@ -4,7 +4,7 @@
 
 import { localDateTime } from '../quick-entry/logic.ts';
 import type { ParsedEvent } from './parsers.ts';
-import { CandidateRecord, findMergeTarget, findPendingPartners, PendingEvent } from './matching.ts';
+import { CandidateRecord, CARD_SOURCES, findMergeTarget, findPendingPartners, PendingEvent } from './matching.ts';
 
 export type AutoEntryMode = 'auto' | 'review';
 
@@ -13,14 +13,17 @@ export type AutoEntryMode = 'auto' | 'review';
  * withdrawal, transfer) the text does not say.
  * 'card_payment': a bank debit equal to an unpaid card purchase that does not
  * say it is a card payment, or whose debited account is uncertain.
+ * 'needs_merchant': a card purchase no notice named the shop of (玉山).
  */
-export type ReviewReason = 'unparsed' | 'unknown_account' | 'possible_replay' | 'ambiguous_match' | 'review_mode' | 'needs_purpose' | 'card_payment';
+export type ReviewReason =
+    | 'unparsed' | 'unknown_account' | 'possible_replay' | 'ambiguous_match' | 'review_mode' | 'needs_purpose' | 'card_payment' | 'needs_merchant';
 
 export const REVIEW_REASON_LABELS: { [R in ReviewReason]: string } = {
     unparsed: '看不懂的格式',
     unknown_account: '需要選帳戶',
     needs_purpose: '需要選用途',
     card_payment: '疑似繳卡費，請選扣款帳戶',
+    needs_merchant: '需要補店名',
     possible_replay: '疑似重複送出',
     ambiguous_match: '可能和既有記錄重複',
     review_mode: '待確認模式',
@@ -35,6 +38,7 @@ export interface AccountRef {
 
 export interface CategoryRef {
     id: string;
+    name: string;
     type: 'expense' | 'income';
 }
 
@@ -73,8 +77,12 @@ export interface NewRecord {
 }
 
 export type Decision =
-    /** `suggestedCardId`: the card a bank debit most likely pays, prefilled in review. */
-    | { action: 'review'; reason: ReviewReason; accountId: string | null; suggestedCardId?: string }
+    /**
+     * Prefilled when the user files it: `suggestedAccountId` is the account a
+     * card purchase is charged to, `suggestedCardId` the card a bank debit most
+     * likely pays. Bank debits get no account: it may be 生活費 or 簽約金.
+     */
+    | { action: 'review'; reason: ReviewReason; accountId: string | null; suggestedAccountId?: string; suggestedCardId?: string }
     /** `fill` is only applied to fields the record leaves empty. */
     | { action: 'merge'; recordId: string; fill: { description?: string } }
     | { action: 'record'; record: NewRecord; mergePendingIds: string[] };
@@ -88,6 +96,12 @@ const CARD_PAYMENT_LABEL = /信用卡/;
 export function namesCardPayment(merchant: string | null): boolean {
     return merchant !== null && CARD_PAYMENT_LABEL.test(merchant);
 }
+
+/** Gas station shop names, e.g. LINE Pay「台灣中油…」. */
+const FUEL_MERCHANT = /中油|加油/;
+const FUEL_CATEGORY = '加油';
+/** Note for a fuel purchase, e.g. 1110汽車加油, matching the user's own entries. */
+const FUEL_NOTE = '汽車加油';
 
 /**
  * Key a remembered choice is stored under: the merchant when known, else the
@@ -115,7 +129,9 @@ export function remembersAccount(source: string, kind: ParsedEvent['kind']): boo
  * rule. A category is only taken from merchant rules, so one choice for a
  * merchant-less card notice does not stamp every later purchase.
  */
-export function resolveAccount(event: ParsedEvent, accounts: AccountRef[], rules: Rule[]): { accountId: string | null; categoryId: string | null } {
+export function resolveAccount(
+    event: Pick<ParsedEvent, 'source' | 'kind' | 'merchant' | 'last4'>, accounts: AccountRef[], rules: Rule[],
+): { accountId: string | null; categoryId: string | null } {
     const open = accounts.filter(a => !a.archived);
     const key = ruleKey(event);
     const find = (matchKey: string) => rules.find(r => r.source === event.source && r.match_key === matchKey);
@@ -153,13 +169,46 @@ export function decide(event: ParsedEvent, ctx: DecisionContext): Decision {
 
     const type = recordType(event, ctx.categories.find(c => c.id === categoryId));
     if (type === null) return decideMovement(event, ctx, accountId);
-    if (accountId === null) return { action: 'review', reason: 'unknown_account', accountId };
-    if (ctx.mode === 'review') return { action: 'review', reason: 'review_mode', accountId };
+    return decidePurchase(event, ctx, type, accountId, categoryId);
+}
 
+/**
+ * A card or wallet payment. Notices about one payment from different sources
+ * complete each other: the card notice knows the account, a wallet notice
+ * (LINE Pay, 全盈+PAY) names the shop the 玉山 card notice lacks. A card
+ * purchase still without a shop name waits for the user to fill it in.
+ */
+function decidePurchase(event: ParsedEvent, ctx: DecisionContext, type: 'expense' | 'income', accountId: string | null, categoryId: string | null): Decision {
     const partners = findPendingPartners(event, ctx.pending);
-    // A waiting LINE Pay / Apple Pay notice usually names the shop the card notice lacks.
-    const description = event.merchant ?? partners.find(p => p.merchant)?.merchant ?? '';
-    return recordDecision(event, ctx, accountId, { type, category_id: categoryId, to_payment_method_id: null, description }, partners);
+    const account = accountId ?? partnerAccount(partners, ctx);
+    if (account === null) return { action: 'review', reason: 'unknown_account', accountId: null };
+    const merchant = event.merchant ?? partners.find(p => p.merchant)?.merchant ?? null;
+    if (merchant === null && CARD_SOURCES.includes(event.source)) {
+        return { action: 'review', reason: 'needs_merchant', accountId: account, suggestedAccountId: account };
+    }
+    if (ctx.mode === 'review') return { action: 'review', reason: 'review_mode', accountId: account };
+
+    const fields = { type, category_id: categoryId, to_payment_method_id: null, description: merchant ?? '' };
+    return recordDecision(event, ctx, account, merchant !== null && FUEL_MERCHANT.test(merchant) ? fuel(event, ctx, fields) : fields, partners);
+}
+
+/** The account a waiting notice of the same payment resolves to, e.g. the 玉山 card notice for a LINE Pay payment. */
+function partnerAccount(partners: PendingEvent[], ctx: DecisionContext): string | null {
+    for (const partner of partners) {
+        if (partner.kind === null) continue;
+        const { accountId } = resolveAccount({ ...partner, kind: partner.kind }, ctx.accounts, ctx.rules);
+        if (accountId !== null) return accountId;
+    }
+    return null;
+}
+
+type RecordFields = Pick<NewRecord, 'type' | 'category_id' | 'to_payment_method_id' | 'description'>;
+
+/** A gas station purchase is filed as 加油 with the user's usual note. */
+function fuel(event: ParsedEvent, ctx: DecisionContext, fields: RecordFields): RecordFields {
+    const category = ctx.categories.find(c => c.type === 'expense' && c.name === FUEL_CATEGORY);
+    const { date } = localDateTime(event.occurredAt);
+    return { ...fields, category_id: category?.id ?? fields.category_id, description: `${date.slice(5, 7)}${date.slice(8, 10)}${FUEL_NOTE}` };
 }
 
 /**
@@ -189,7 +238,7 @@ function recordDecision(
     event: ParsedEvent,
     ctx: DecisionContext,
     accountId: string,
-    fields: Pick<NewRecord, 'type' | 'category_id' | 'to_payment_method_id' | 'description'>,
+    fields: RecordFields,
     partners: PendingEvent[] = [],
 ): Decision {
     const account = ctx.accounts.find(a => a.id === accountId)!;
