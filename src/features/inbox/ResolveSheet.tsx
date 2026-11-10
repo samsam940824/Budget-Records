@@ -7,6 +7,7 @@ import { Card, FieldRow, Segmented, SectionTitle, Sheet, Toggle, selectClass } f
 import RecordRow, { buildLookup } from '../records/RecordRow';
 import { formatCurrency } from '../../utils/helpers';
 import { previewRemember, RememberPreview, rememberedAccountId } from '../../lib/autoEntryRules';
+import { remembersAccount } from '../../../supabase/functions/notify/decide';
 
 type Mode = 'record' | 'merge';
 
@@ -19,7 +20,7 @@ const DEFAULT_TYPE: { [K in NotificationKind]: RecordType } = {
     expense: 'expense', income: 'income', transfer_out: 'transfer', transfer_in: 'income',
 };
 
-const canRemember = (e: NotificationEvent) => !!e.kind && e.source !== 'unknown' && !e.source.startsWith('app:');
+const canRemember = (e: NotificationEvent) => !!e.kind && e.source !== 'unknown' && !e.source.startsWith('app:') && remembersAccount(e.source, e.kind);
 
 type Choice = Pick<DbRecord, 'type' | 'payment_method_id' | 'to_payment_method_id' | 'category_id'>;
 

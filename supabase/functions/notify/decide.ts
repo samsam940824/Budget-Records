@@ -99,6 +99,18 @@ export function ruleKey(event: Pick<ParsedEvent, 'merchant' | 'kind'>): string {
 }
 
 /**
+ * LINE Pay payments are charged to a card or the LINE Pay balance and the
+ * text does not say which. The card notice they merge with supplies the
+ * account, so a remembered account would book card payments twice.
+ */
+const FUNDING_UNKNOWN_SOURCES = ['linepay'];
+
+/** Whether a remembered choice may set the account for this kind of notification. */
+export function remembersAccount(source: string, kind: ParsedEvent['kind']): boolean {
+    return !(kind === 'expense' && FUNDING_UNKNOWN_SOURCES.includes(source));
+}
+
+/**
  * Account and category for an event: a card suffix wins, then a remembered
  * rule. A category is only taken from merchant rules, so one choice for a
  * merchant-less card notice does not stamp every later purchase.
@@ -108,7 +120,7 @@ export function resolveAccount(event: ParsedEvent, accounts: AccountRef[], rules
     const key = ruleKey(event);
     const find = (matchKey: string) => rules.find(r => r.source === event.source && r.match_key === matchKey);
     // A new shop or parking lot falls back to the account last used for this source.
-    const rule = find(key) ?? find(KIND_PREFIX + event.kind);
+    const rule = remembersAccount(event.source, event.kind) ? find(key) ?? find(KIND_PREFIX + event.kind) : undefined;
     const byLast4 = event.last4 ? open.find(a => a.match_last4.includes(event.last4!)) : undefined;
     const ruleAccount = open.find(a => a.id === rule?.payment_method_id);
     return {

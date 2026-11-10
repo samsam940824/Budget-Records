@@ -111,6 +111,19 @@ function utaggoExit(m: RegExpMatchArray) {
     return amount === null ? null : { kind: 'expense' as const, amount, merchant: lot.trim() || null, occurredAt: taipeiTime(y, mo, d, h, mi) };
 }
 
+/**
+ * LINE Pay payment: 「LINE Pay 付款 NT$ 253 付款完成。 商店名稱: 全都雞拉麵 西湖店」.
+ * The shop name may be missing; the text has no timestamp.
+ */
+const LINEPAY_PAYMENT = new RegExp(
+    `LINE\\s*Pay\\s*付款\\s*NT\\$\\s*${AMOUNT}\\s*付款完成[。.]?(?:\\s*商店名稱\\s*[:：]\\s*([^。]+))?`,
+);
+
+function linepayPayment(m: RegExpMatchArray, receivedAt: Date) {
+    const amount = parseEntryAmount(m[1]);
+    return amount === null ? null : { kind: 'expense' as const, amount, merchant: m[2]?.trim() || null, occurredAt: receivedAt };
+}
+
 const CATHAY_ACCOUNT = (label: string) => new RegExp(
     `【帳戶${label}通知】\\s*您於\\s*(\\d{4})/(\\d{1,2})/(\\d{1,2})\\s+(\\d{1,2}):(\\d{2}):(\\d{2})\\s*(.*?)[,，]\\s*金額為\\s*NT\\$\\s*${AMOUNT}\\s*元`,
 );
@@ -123,6 +136,7 @@ const PARSERS: Parser[] = [
     { source: 'esun_account', pattern: new RegExp(`金額異動\\s*[～~]?\\s*存台幣\\s*${AMOUNT}\\s*元`), build: simple('transfer_in') },
     { source: 'cathay_card', pattern: CATHAY_CARD, build: cathayCard },
     { source: 'utaggo', pattern: UTAGGO_EXIT, build: utaggoExit },
+    { source: 'linepay', pattern: LINEPAY_PAYMENT, build: linepayPayment },
     { source: 'cathay_account', pattern: CATHAY_ACCOUNT('出帳'), build: cathayAccount('transfer_out') },
     { source: 'cathay_account', pattern: CATHAY_ACCOUNT('入帳'), build: cathayAccount('transfer_in') },
 ];

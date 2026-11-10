@@ -154,11 +154,11 @@ describe('accounts, categories and modes', () => {
     it('applies a remembered category only for a merchant', () => {
         const rules = [
             { source: 'esun_card', match_key: 'k:expense', payment_method_id: ESUN_CARD, category_id: 'cat-lunch' },
-            { source: 'linepay', match_key: 'm:50嵐', payment_method_id: ESUN_CARD, category_id: 'cat-drink' },
+            { source: 'cathay_card', match_key: 'm:50嵐', payment_method_id: CATHAY_CARD, category_id: 'cat-drink' },
         ];
         expect(decide(event('esun_card', 59, '10:00'), ctx({ rules }))).toMatchObject({ record: { category_id: null } });
-        expect(decide(event('linepay', 40, '10:00', { merchant: '50嵐' }), ctx({ rules }))).toMatchObject({ record: { category_id: 'cat-drink' } });
-        expect(ruleKey(event('linepay', 40, '10:00', { merchant: ' 50嵐 ' }))).toBe('m:50嵐');
+        expect(decide(event('cathay_card', 40, '10:00', { merchant: '50嵐' }), ctx({ rules }))).toMatchObject({ record: { category_id: 'cat-drink' } });
+        expect(ruleKey(event('cathay_card', 40, '10:00', { merchant: ' 50嵐 ' }))).toBe('m:50嵐');
     });
 
     it('holds bank account movements until their purpose is known', () => {
@@ -242,5 +242,32 @@ describe('⑧ a source with a new shop name each time', () => {
     it('uses the account remembered for the source', () => {
         const decision = decide(event('utaggo', 175, '15:43', { merchant: '日月亭桃園藝文南' }), ctx({ rules: [utaggoRule] }));
         expect(decision).toMatchObject({ action: 'record', record: { payment_method_id: ESUN_CARD, description: '日月亭桃園藝文南', category_id: null } });
+    });
+});
+
+describe('⑨ LINE Pay charged to a card', () => {
+    const linepay = (at: string) => event('linepay', 253, at, { merchant: '全都雞拉麵 西湖店' });
+
+    it('waits for the card notice when LINE Pay arrives first', () => {
+        expect(decide(linepay('12:06'), ctx())).toMatchObject({ action: 'review', reason: 'unknown_account', accountId: null });
+    });
+
+    it('the card notice takes the waiting LINE Pay shop name', () => {
+        const waiting: PendingEvent = { id: 'e1', source: 'linepay', kind: 'expense', amount: 253, merchant: '全都雞拉麵 西湖店', occurredAt: linepay('12:06').occurredAt };
+        expect(decide(event('esun_card', 253, '12:07'), ctx({ pending: [waiting] }))).toMatchObject({
+            action: 'record', record: { payment_method_id: ESUN_CARD, description: '全都雞拉麵 西湖店' }, mergePendingIds: ['e1'],
+        });
+    });
+
+    it('LINE Pay arriving after the card notice fills in the shop name', () => {
+        const card = notified('r1', 253, '12:06', 'esun_card');
+        expect(decide(linepay('12:07'), ctx({ candidates: [card] })))
+            .toEqual({ action: 'merge', recordId: 'r1', fill: { description: '全都雞拉麵 西湖店' } });
+    });
+
+    it('ignores a remembered account, which could book a card payment twice', () => {
+        const walletRule = { source: 'linepay', match_key: 'k:expense', payment_method_id: LIVING, category_id: null };
+        const card = notified('r1', 253, '12:06', 'esun_card');
+        expect(decide(linepay('12:07'), ctx({ rules: [walletRule], candidates: [card] }))).toMatchObject({ action: 'merge', recordId: 'r1' });
     });
 });

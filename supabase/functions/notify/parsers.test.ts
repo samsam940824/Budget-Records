@@ -66,6 +66,17 @@ describe('uTagGo', () => {
     });
 });
 
+describe('LINE Pay', () => {
+    it('reads the amount and shop name of a payment', () => {
+        const text = 'LINE Pay 付款 NT$ 253 付款完成。 商店名稱: 全都雞拉麵 西湖店';
+        expect(parsed(text)).toMatchObject({ source: 'linepay', kind: 'expense', amount: 253, merchant: '全都雞拉麵 西湖店', occurredAt: received });
+    });
+
+    it('keeps a payment without a shop name', () => {
+        expect(parsed('LINE Pay 付款 NT$ 1,280 付款完成。')).toMatchObject({ source: 'linepay', amount: 1280, merchant: null });
+    });
+});
+
 describe('not transactions', () => {
     it.each([
         ['card payment received', '玉山銀行\n信用卡繳款入帳通知'],
