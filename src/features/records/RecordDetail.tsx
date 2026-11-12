@@ -98,6 +98,13 @@ export default function RecordDetail({ record, onClose, onEdit }: { record: DbRe
     const [confirm, setConfirm] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // The list behind this full-screen sheet would otherwise take the swipe.
+    useEffect(() => {
+        const previous = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = previous; };
+    }, []);
+
     const cat = record.category_id ? lookup.categoryById.get(record.category_id) : undefined;
     const from = record.payment_method_id ? lookup.accountById.get(record.payment_method_id) : undefined;
     const to = record.to_payment_method_id ? lookup.accountById.get(record.to_payment_method_id) : undefined;
@@ -138,7 +145,8 @@ export default function RecordDetail({ record, onClose, onEdit }: { record: DbRe
                     )}
                 </div>
             </div>
-            <div className="p-6 flex flex-col items-center overflow-y-auto">
+            {/* Block layout: in a flex column the overflow-hidden cards shrank to fit and were clipped instead of scrolling. */}
+            <div className="p-6 flex-1 min-h-0 overflow-y-auto overscroll-contain">
                 <div className={`${amountColor(record.type)} text-5xl font-bold mb-2 text-center break-all`}>
                     {formatSigned(record.amount, record.type, record.currency_code)}
                 </div>
