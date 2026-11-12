@@ -12,7 +12,7 @@ import { authenticate, HttpError, json, readJsonObject, serve, supabase } from '
 import { sha256Hex } from '../quick-entry/logic.ts';
 import { decide, Decision, REVIEW_REASON_LABELS, waitsForPartner } from './decide.ts';
 import { normalizeText, ParsedEvent, parseNotification } from './parsers.ts';
-import { applyDecision, eventBase, loadContext, Outcome, purgeRawText, storePending } from './store.ts';
+import { applyDecision, eventBase, loadContext, Outcome, storePending } from './store.ts';
 
 const MAX_BODY_BYTES = 8192;
 const MAX_TEXT_LENGTH = 2000;
@@ -61,13 +61,6 @@ async function handle(text: string, app: string | null, userId: string): Promise
         outcome = await applyDecision(supabase, userId, eventBase(result.event, text, rawHash), decision);
     }
 
-    try {
-        await purgeRawText(supabase, userId, now);
-    } catch (err) {
-        // Retention cleanup must not fail the entry itself; it reruns on the next call.
-        if (!(err instanceof Error)) throw err;
-        console.error(JSON.stringify({ event: 'purge_raw_text_failed', error: err.message }));
-    }
     return json({ status: outcome.status, message: describe(outcome) });
 }
 

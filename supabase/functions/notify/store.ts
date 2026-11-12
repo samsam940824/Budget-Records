@@ -10,8 +10,6 @@ import {
 } from './matching.ts';
 import type { ParsedEvent } from './parsers.ts';
 
-/** Raw notification text is cleared this long after an event is resolved. */
-export const RAW_TEXT_RETENTION_DAYS = 30;
 const DAY_MS = 86_400_000;
 const UNIQUE_VIOLATION = '23505';
 
@@ -183,11 +181,4 @@ export function applyDecision(db: SupabaseClient, userId: string, base: EventBas
         case 'merge': return applyMerge(db, userId, base, decision);
         case 'record': return applyRecord(db, userId, base, decision);
     }
-}
-
-/** Clears raw text of events resolved more than RAW_TEXT_RETENTION_DAYS ago. */
-export async function purgeRawText(db: SupabaseClient, userId: string, now: Date): Promise<void> {
-    const cutoff = new Date(now.getTime() - RAW_TEXT_RETENTION_DAYS * DAY_MS).toISOString();
-    unwrap(await db.from('notification_events').update({ raw_text: null })
-        .eq('user_id', userId).neq('status', 'pending').not('raw_text', 'is', null).lt('resolved_at', cutoff).select('id'));
 }
