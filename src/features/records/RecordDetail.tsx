@@ -56,6 +56,17 @@ function SourceSection({ record }: { record: DbRecord }) {
                     </div>
                 );
             })}
+            {events.some(e => e.raw_text) && (
+                <div className={`p-4 ${merged.length > 0 ? 'border-t border-zinc-800' : ''}`}>
+                    <p className="text-zinc-500 text-xs mb-2">通知原文</p>
+                    {events.filter(e => e.raw_text).map(e => (
+                        <div key={e.id} className="mb-2 last:mb-0">
+                            <p className="text-zinc-400 text-xs mb-1">{sourceLabel(e.source)}</p>
+                            <p className="text-zinc-300 text-sm whitespace-pre-wrap break-words bg-zinc-800 rounded-xl p-3">{e.raw_text}</p>
+                        </div>
+                    ))}
+                </div>
+            )}
             {error && <p className="text-red-400 text-sm p-4" role="alert">{error}</p>}
             {splitting && (
                 <ConfirmDialog
