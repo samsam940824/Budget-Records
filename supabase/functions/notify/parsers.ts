@@ -122,8 +122,15 @@ const LINEPAY_PAYMENT = new RegExp(
 
 /** 全盈+PAY: 「【全家便利商店】付款成功76元，為保障您的交易安全…」. */
 const PLUSPAY_PAYMENT = new RegExp(`【([^】]+)】\\s*付款成功\\s*${AMOUNT}\\s*元`);
+/**
+ * icash Pay uses the same wording: 「【統一超商 實體門市】付款成功55元」. It is
+ * told apart by its title, or by the shop, since the user pays with it only at 7-ELEVEN.
+ */
+const ICASH_BY_TITLE = new RegExp(`icash[\\s\\S]*?【([^】]+)】\\s*付款成功\\s*${AMOUNT}\\s*元`, 'i');
+const ICASH_BY_SHOP = new RegExp(`【((?:統一超商|7-?ELEVEN|7-11)[^】]*)】\\s*付款成功\\s*${AMOUNT}\\s*元`, 'i');
 
-function pluspayPayment(m: RegExpMatchArray, receivedAt: Date) {
+/** Builds a 「【shop】付款成功N元」 wallet payment. */
+function shopPayment(m: RegExpMatchArray, receivedAt: Date) {
     const amount = parseEntryAmount(m[2]);
     return amount === null ? null : { kind: 'expense' as const, amount, merchant: m[1].trim() || null, occurredAt: receivedAt };
 }
@@ -146,7 +153,9 @@ const PARSERS: Parser[] = [
     { source: 'cathay_card', pattern: CATHAY_CARD, build: cathayCard },
     { source: 'utaggo', pattern: UTAGGO_EXIT, build: utaggoExit },
     { source: 'linepay', pattern: LINEPAY_PAYMENT, build: linepayPayment },
-    { source: 'pluspay', pattern: PLUSPAY_PAYMENT, build: pluspayPayment },
+    { source: 'icashpay', pattern: ICASH_BY_TITLE, build: shopPayment },
+    { source: 'icashpay', pattern: ICASH_BY_SHOP, build: shopPayment },
+    { source: 'pluspay', pattern: PLUSPAY_PAYMENT, build: shopPayment },
     { source: 'cathay_account', pattern: CATHAY_ACCOUNT('出帳'), build: cathayAccount('transfer_out') },
     { source: 'cathay_account', pattern: CATHAY_ACCOUNT('入帳'), build: cathayAccount('transfer_in') },
 ];

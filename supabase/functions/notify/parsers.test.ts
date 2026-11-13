@@ -77,6 +77,15 @@ describe('LINE Pay', () => {
     });
 });
 
+describe('icash Pay', () => {
+    it('reads the shop and amount, told apart from 全盈+PAY by its title', () => {
+        expect(parsed('icash Pay\n【統一超商 實體門市】付款成功55元')).toMatchObject({ source: 'icashpay', kind: 'expense', amount: 55, merchant: '統一超商 實體門市', occurredAt: received });
+    });
+    it('is told apart by a 7-ELEVEN shop when the title is missing', () => {
+        expect(parsed('【統一超商 實體門市】付款成功55元')).toMatchObject({ source: 'icashpay', amount: 55 });
+    });
+});
+
 describe('全盈+PAY', () => {
     it('reads the shop and amount despite the anti-fraud footer mentioning 驗證碼', () => {
         const text = '全盈+PAY\n【全家便利商店】付款成功76元，為保障您的交易安全，請謹防詐騙，您應避免向他人提供或揭露個人資料、密碼、驗證碼或銀行帳戶等資訊。如遇可疑扣款，請立即聯繫客服以保障您的權益。';
