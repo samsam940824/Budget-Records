@@ -72,6 +72,16 @@ describe('LINE Pay', () => {
         expect(parsed(text)).toMatchObject({ source: 'linepay', kind: 'expense', amount: 253, merchant: '全都雞拉麵 西湖店', occurredAt: received });
     });
 
+    it('tells a balance payment apart and leaves the balance out of the shop name', () => {
+        const text = 'LINE錢包\nLINE Pay 付款 NT$ 140\n付款完成。\n商店名稱: 隱嚐sheltaste早午餐\n付款後餘額: NT$ 388';
+        expect(parsed(text)).toMatchObject({ source: 'linepay_balance', kind: 'expense', amount: 140, merchant: '隱嚐sheltaste早午餐' });
+    });
+
+    it('a card payment carries no balance line', () => {
+        const text = 'LINE錢包\nLINE Pay 付款 NT$ 299 付款完成。 商店名稱: POPEYES 瑞光門市 (線上點餐)';
+        expect(parsed(text)).toMatchObject({ source: 'linepay', amount: 299, merchant: 'POPEYES 瑞光門市 (線上點餐)' });
+    });
+
     it('keeps a payment without a shop name', () => {
         expect(parsed('LINE Pay 付款 NT$ 1,280 付款完成。')).toMatchObject({ source: 'linepay', amount: 1280, merchant: null });
     });

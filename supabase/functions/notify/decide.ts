@@ -113,9 +113,10 @@ export function ruleKey(event: Pick<ParsedEvent, 'merchant' | 'kind'>): string {
 }
 
 /**
- * LINE Pay payments are charged to a card or the LINE Pay balance and the
- * text does not say which. The card notice they merge with supplies the
- * account, so a remembered account would book card payments twice.
+ * LINE Pay payments without a balance line are charged to a card. The card
+ * notice they merge with supplies the account, so a remembered account would
+ * book card payments twice. Balance payments (linepay_balance) may remember
+ * the wallet account.
  */
 const FUNDING_UNKNOWN_SOURCES = ['linepay'];
 

@@ -135,9 +135,17 @@ function shopPayment(m: RegExpMatchArray, receivedAt: Date) {
     return amount === null ? null : { kind: 'expense' as const, amount, merchant: m[1].trim() || null, occurredAt: receivedAt };
 }
 
+/**
+ * A payment from the LINE Pay balance ends with 「付款後餘額: NT$ 388」; card
+ * payments leave the balance alone and never carry that line.
+ */
+const LINEPAY_BALANCE_PAYMENT = new RegExp(`^(?=.*付款後餘額).*?${LINEPAY_PAYMENT.source}`);
+const BALANCE_LINE = /\s*付款後餘額.*$/;
+
 function linepayPayment(m: RegExpMatchArray, receivedAt: Date) {
     const amount = parseEntryAmount(m[1]);
-    return amount === null ? null : { kind: 'expense' as const, amount, merchant: m[2]?.trim() || null, occurredAt: receivedAt };
+    const merchant = m[2]?.replace(BALANCE_LINE, '').trim() || null;
+    return amount === null ? null : { kind: 'expense' as const, amount, merchant, occurredAt: receivedAt };
 }
 
 const CATHAY_ACCOUNT = (label: string) => new RegExp(
@@ -152,6 +160,7 @@ const PARSERS: Parser[] = [
     { source: 'esun_account', pattern: new RegExp(`金額異動\\s*[～~]?\\s*存台幣\\s*${AMOUNT}\\s*元`), build: simple('transfer_in') },
     { source: 'cathay_card', pattern: CATHAY_CARD, build: cathayCard },
     { source: 'utaggo', pattern: UTAGGO_EXIT, build: utaggoExit },
+    { source: 'linepay_balance', pattern: LINEPAY_BALANCE_PAYMENT, build: linepayPayment },
     { source: 'linepay', pattern: LINEPAY_PAYMENT, build: linepayPayment },
     { source: 'icashpay', pattern: ICASH_BY_TITLE, build: shopPayment },
     { source: 'icashpay', pattern: ICASH_BY_SHOP, build: shopPayment },

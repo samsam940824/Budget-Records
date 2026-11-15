@@ -337,3 +337,38 @@ describe('⑫ wallet and card notices arriving in the same second', () => {
         });
     });
 });
+
+describe('⑬ LINE Pay paid from the wallet balance', () => {
+    const WALLET = 'acc-linepay-wallet';
+    const withWallet = [...accounts, { id: WALLET, match_last4: [], archived: false, currency_code: 'TWD' }];
+    const walletRule = { source: 'linepay_balance', match_key: 'k:expense', payment_method_id: WALLET, category_id: null };
+    const balance = (at: string, merchant = '隱嚐sheltaste早午餐') => event('linepay_balance', 140, at, { merchant });
+
+    it('asks for the account until the wallet is remembered', () => {
+        expect(decide(balance('09:00'), ctx({ accounts: withWallet }))).toMatchObject({ action: 'review', reason: 'unknown_account' });
+    });
+
+    it('books a new shop to the remembered wallet', () => {
+        expect(decide(balance('09:00', '新的早餐店'), ctx({ accounts: withWallet, rules: [esunCardRule, walletRule] }))).toMatchObject({
+            action: 'record', record: { payment_method_id: WALLET, description: '新的早餐店' },
+        });
+    });
+
+    it('never takes a waiting card notice of the same amount', () => {
+        const waitingCard: PendingEvent = { id: 'e-card', source: 'esun_card', kind: 'expense', amount: 140, merchant: null, last4: null, occurredAt: balance('09:00').occurredAt };
+        const decision = decide(balance('09:00'), ctx({ accounts: withWallet, rules: [esunCardRule, walletRule], pending: [waitingCard] }));
+        expect(decision).toMatchObject({ action: 'record', record: { payment_method_id: WALLET } });
+        expect(decision).not.toHaveProperty('mergePendingIds', ['e-card']);
+    });
+
+    it('a card notice never takes a waiting balance payment', () => {
+        const waitingBalance: PendingEvent = { id: 'e-bal', source: 'linepay_balance', kind: 'expense', amount: 140, merchant: '隱嚐sheltaste早午餐', last4: null, occurredAt: balance('09:00').occurredAt };
+        expect(decide(event('esun_card', 140, '09:00'), ctx({ accounts: withWallet, pending: [waitingBalance] })))
+            .toMatchObject({ action: 'review', reason: 'needs_merchant' });
+    });
+
+    it('a card notice does not merge into a booked balance payment', () => {
+        const booked = notified('r1', 140, '09:00', 'linepay_balance', { payment_method_id: WALLET });
+        expect(decide(event('esun_card', 140, '09:01', SHOP), ctx({ accounts: withWallet, candidates: [booked] }))).toMatchObject({ action: 'record' });
+    });
+});

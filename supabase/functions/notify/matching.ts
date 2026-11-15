@@ -18,6 +18,8 @@ export const MANUAL_MERGE_WINDOW_MS = 30 * 60 * 1000;
 export const CARD_PAYMENT_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 /** Sources whose records are purchases charged to a credit card. */
 export const CARD_SOURCES = ['esun_card', 'cathay_card', 'utaggo'];
+/** Sources of payments from a wallet balance, which no card notice describes. */
+export const BALANCE_SOURCES = ['linepay_balance'];
 
 const TAIPEI_OFFSET = '+08:00';
 
@@ -126,12 +128,17 @@ export function findPendingPartners(event: ParsedEvent, pending: PendingEvent[])
     const bySource = new Map<string, { partner: PendingEvent; gap: number }>();
     for (const p of pending) {
         if (p.source === event.source || p.kind !== event.kind || p.amount !== event.amount) continue;
+        if (oneFromBalanceOtherFromCard(p.source, event.source)) continue;
         const gap = Math.abs(p.occurredAt.getTime() - event.occurredAt.getTime());
         if (gap > NOTIFICATION_MERGE_WINDOW_MS) continue;
         const best = bySource.get(p.source);
         if (!best || gap < best.gap) bySource.set(p.source, { partner: p, gap });
     }
     return [...bySource.values()].map(v => v.partner);
+}
+
+function oneFromBalanceOtherFromCard(a: string, b: string): boolean {
+    return (BALANCE_SOURCES.includes(a) && CARD_SOURCES.includes(b)) || (BALANCE_SOURCES.includes(b) && CARD_SOURCES.includes(a));
 }
 
 /**
