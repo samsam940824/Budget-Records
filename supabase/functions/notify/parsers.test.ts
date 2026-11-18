@@ -82,6 +82,21 @@ describe('LINE Pay', () => {
         expect(parsed(text)).toMatchObject({ source: 'linepay', amount: 299, merchant: 'POPEYES 瑞光門市 (線上點餐)' });
     });
 
+    it('reads a transit code boarding charge as a balance payment', () => {
+        const text = 'LINE錢包\nLINE Pay 付款 NT$ 15 付款完成。 商店名稱: 三重汽車客運股份有限公司 付款後餘額: NT$ 994 :  回饋:  預計獲得點數: 2 P LINE Pay錢包通知內容僅供參考，最終回饋點數請以實際活動規定為準。 進站交易已完成，感謝您使用LINE Pay。 099基湖路口 2026.11.18 18:47:02 > [尚未出站。]';
+        expect(parsed(text)).toMatchObject({ source: 'linepay_balance', amount: 15, merchant: '三重汽車客運股份有限公司' });
+    });
+
+    it('drops the free exit tap of a one-section fare', () => {
+        const text = 'LINE錢包\nLINE Pay 付款 NT$ 0 付款完成。 商店名稱: 三重汽車客運股份有限公司 付款後餘額: NT$ 994 出站交易已完成，感謝您使用LINE Pay。 099基湖路口 2026.11.18 18:46:56 > 105三民國中 2026.11.18 19:00:20';
+        expect(parseNotification(text, received).status).toBe('ignored');
+    });
+
+    it('keeps a charged exit tap of a longer ride', () => {
+        const text = 'LINE錢包\nLINE Pay 付款 NT$ 15 付款完成。 商店名稱: 三重汽車客運股份有限公司 付款後餘額: NT$ 979 出站交易已完成，感謝您使用LINE Pay。';
+        expect(parsed(text)).toMatchObject({ source: 'linepay_balance', amount: 15 });
+    });
+
     it('keeps a payment without a shop name', () => {
         expect(parsed('LINE Pay 付款 NT$ 1,280 付款完成。')).toMatchObject({ source: 'linepay', amount: 1280, merchant: null });
     });

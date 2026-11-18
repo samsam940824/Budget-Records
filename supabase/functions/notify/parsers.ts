@@ -41,6 +41,8 @@ const IGNORE_PATTERNS: RegExp[] = [
     /你有一筆存款入帳囉/, // Cathay LINE duplicate of the app's 入帳 notice
     // An actual code, not 全盈+PAY's 「請勿提供…驗證碼」 anti-fraud footer.
     /驗證碼\s*(?:為|是|[:：])?\s*[0-9]{4,}|OTP/i,
+    // LINE Pay transit code: the exit tap of a one-section fare charges nothing.
+    /LINE\s*Pay\s*付款\s*NT\$\s*0(?:\.0{1,2})?\s*付款完成/,
 ];
 
 /** Cancellations and refunds reverse an earlier record, so a human decides. */
